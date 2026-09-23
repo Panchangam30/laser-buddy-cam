@@ -24,6 +24,8 @@ import cv2
 from dotenv import load_dotenv
 from openai import APIConnectionError, AuthenticationError, NotFoundError, OpenAI
 
+from speech import Speaker, spoken_summary
+
 # Load .env from next to this file, so it works from any working directory.
 # Real environment variables already set take precedence over the file.
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -116,6 +118,10 @@ def render(result):
     print("=" * 78)
     for key, heading in FIELDS:
         val = str(result.get(key, "") or "").strip()
+        # The model sometimes fills in reshoot advice even when it's confident;
+        # showing it there just undercuts a good answer.
+        if key == "reshoot" and conf != "low":
+            continue
         if val:
             print(f"\n{heading}")
             print(wrap.fill(val))
@@ -150,6 +156,12 @@ def main():
                     help="high reads small markings better; low is cheaper")
     ap.add_argument("--list-models", action="store_true",
                     help="list models your key can access, then exit")
+    ap.add_argument("--voices", action="store_true",
+                    help="list xAI TTS voices, then exit")
+    ap.add_argument("--no-speak", action="store_true",
+                    help="show answers as text only, don't speak them")
+    ap.add_argument("--voice", default=os.environ.get("XAI_VOICE_ID", "eve"),
+                    help="xAI voice id (default eve)")
     args = ap.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -159,6 +171,15 @@ def main():
             "      OPENAI_API_KEY=sk-...\n"
             "  (copy .env.example to .env if you don't have one yet)")
     client = OpenAI()
+
+    speak_on = not args.no_speak and os.environ.get("SPEAK", "1") != "0"
+    speaker = Speaker(enabled=speak_on, voice=args.voice)
+
+    if args.voices:
+        if not speaker.key:
+            raise SystemExit("XAI_API_KEY is not set in .env")
+        print(json.dumps(speaker.list_voices(), indent=2))
+        return
 
     # Check the key and the model up front -- a clear message now beats a
     # traceback after the student has already lined up a component.
@@ -193,7 +214,10 @@ def main():
                      daemon=True).start()
 
     busy = False
-    print(f"model: {args.model} | detail: {args.detail}")
+    if speaker.reason:
+        print(f"  note: {speaker.reason}")
+    voice_state = f"voice: {speaker.voice}" if speaker.enabled else "voice: off"
+    print(f"model: {args.model} | detail: {args.detail} | {voice_state}")
     print("[SPACE] identify   [q] quit")
 
     try:
@@ -212,7 +236,9 @@ def main():
             cv2.imshow("identify -- engineering", view)
 
             try:
-                render(results.get_nowait())
+                result = results.get_nowait()
+                render(result)
+                speaker.say(spoken_summary(result))
                 busy = False
             except queue.Empty:
                 pass
@@ -221,10 +247,12 @@ def main():
             if k in (ord("q"), 27):
                 break
             if k == ord(" ") and not busy:
+                speaker.stop()          # cut off the previous answer
                 busy = True
                 print("\nidentifying ...")
                 jobs.put(encode_frame(frame))
     finally:
+        speaker.stop()
         cap.release()
         cv2.destroyAllWindows()
 
