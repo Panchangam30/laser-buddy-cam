@@ -3,10 +3,15 @@ import { Scene, type ViewMode } from "./three/Scene";
 import { STATUS_COLOR } from "./three/World";
 import { CameraPanel } from "./ui/CameraPanel";
 import { BoardMap } from "./ui/BoardMap";
+import { LaserPanel } from "./ui/LaserPanel";
 import { MOCK_PLAN } from "./lib/mockPlan";
 import { requestPlan, speak, health } from "./lib/api";
 import { analyseFrame, resetWorld, setOrientation, EMPTY_WORLD, type World } from "./lib/world";
 import { reconcile, guidanceText } from "./lib/guidance";
+import {
+  pointAt, moveLaser, nudgeLaser, setLaserPower, laserCentre, laserConnect,
+  laserStatus, type Direction, type NudgeSize,
+} from "./lib/laser";
 import type { Plan } from "./lib/types";
 import { OpenAIVoiceSession } from "./lib/realtime";
 import { GrokVoiceSession } from "./lib/grokVoice";
@@ -140,6 +145,60 @@ export default function App() {
         if (!w) return "I cannot see the board right now.";
         return w.summary;
       }
+      case "move_laser": {
+        // Connect on demand: being told "move left" and answering that the
+        // laser is not plugged in, when it is, just wastes the student's turn.
+        const ready = await ensureLaser();
+        if (ready) return ready;
+
+        const dir = String(args.direction ?? "").toLowerCase() as Direction;
+        if (dir) {
+          const amount = (String(args.amount ?? "small").toLowerCase() || "small") as NudgeSize;
+          const r = await nudgeLaser(dir, amount);
+          if (!r.ok) return `I could not move it: ${r.error}`;
+          return `Moved ${dir}${r.atLimit ? ", and that axis is now at its limit" : ""}.`
+            + ` Pan ${r.pan}, tilt ${r.tilt}.`;
+        }
+        const pan = args.pan === undefined ? undefined : Number(args.pan);
+        const tilt = args.tilt === undefined ? undefined : Number(args.tilt);
+        if (pan === undefined && tilt === undefined) {
+          return "Tell me a direction, or a pan and tilt angle.";
+        }
+        const r = await moveLaser(pan, tilt);
+        return r.ok ? `Now at pan ${r.pan}, tilt ${r.tilt}.`
+                    : `I could not move it: ${r.error}`;
+      }
+      case "laser_power": {
+        const ready = await ensureLaser();
+        if (ready) return ready;
+        const on = Boolean(args.on);
+        const r = await setLaserPower(on);
+        return r.ok ? `Laser ${on ? "on" : "off"}.`
+                    : `I could not switch it: ${r.error}`;
+      }
+      case "centre_laser": {
+        const ready = await ensureLaser();
+        if (ready) return ready;
+        const r = await laserCentre();
+        return r?.ok === false
+          ? `I could not centre it: ${r.error}`
+          : "Centred, beam off.";
+      }
+      case "point_at": {
+        const hole = String(args.hole ?? "").trim().toUpperCase();
+        // An empty argument means "whatever you just told them to do", which is
+        // the common case and saves the model having to restate a hole.
+        const target = hole || guidanceRef.current.focus.holes[0];
+        if (!target) return "There is nothing to point at yet.";
+        try {
+          const r = await pointAt(target);
+          return r.ok
+            ? `The laser is now pointing at ${r.hole ?? target}.`
+            : `I could not point there: ${r.error}`;
+        } catch (e) {
+          return `I could not point there: ${e instanceof Error ? e.message : e}`;
+        }
+      }
       case "where_is": {
         const w = await freshWorld();
         if (!w) return "I cannot see the board right now.";
@@ -171,6 +230,24 @@ export default function App() {
       }
       default:
         return `Unknown tool ${name}.`;
+    }
+  }
+
+  /**
+   * Make sure the head is connected. Returns a sentence to say when it is not,
+   * or "" when it is ready.
+   */
+  async function ensureLaser(): Promise<string> {
+    try {
+      const s = await laserStatus();
+      if (s.connected) return "";
+      const r = await laserConnect();
+      if (r?.connected) return "";
+      return r?.error
+        ? `I cannot reach the laser: ${r.error}`
+        : "The laser is not connected.";
+    } catch (e) {
+      return `I cannot reach the laser: ${e instanceof Error ? e.message : e}`;
     }
   }
 
@@ -287,6 +364,8 @@ export default function App() {
           onShowMap={() => setShowMap((v) => !v)}
           mapOpen={showMap}
         />
+
+        <LaserPanel focus={guidance.focus.holes} why={guidance.focus.why} />
 
         <VoiceBar
           status={voice} error={voiceErr} muted={muted}

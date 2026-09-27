@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import sys
 
-from . import board as bd
+from . import aim, board as bd
 from . import detect, geometry as g, synth
+from .fakehead import rig
 from .track import Tracker
 
 #: Parts placed in known holes, and the holes each must be reported as covering.
@@ -88,8 +89,62 @@ def run(tilts: tuple[float, ...] = (0.0, 0.02, 0.03)) -> int:
     return failures
 
 
+def run_aiming() -> int:
+    """Calibrate against a simulated head and check it can hit named holes."""
+    print("\n=== laser aiming ===")
+    head, base = rig()
+    pose = bd.find_board(base)
+    if not isinstance(pose, bd.BoardPose):
+        print("  FAIL  could not find the board in the test image")
+        return 1
+
+    # Stand in for the service: every 'frame' is the board as the head is
+    # currently aiming it, which is exactly what the real loop sees.
+    cal = aim.Calibrator()
+    cal.aimer = aim.Aimer()                       # ignore any cached calibration
+    cal.run(head, lambda: head.render(base, pose), lambda _f: pose)
+
+    if cal.error:
+        print(f"  FAIL  calibration failed: {cal.error}")
+        return 1
+
+    a = cal.aimer
+    print(f"  {head.moves} moves, {len(a.samples)} samples, "
+          f"rms {a.rms_mm:.2f} mm -- {a.quality()}")
+
+    failures = 0
+    if a.rms_mm is None or a.rms_mm > g.PITCH / 2:
+        print(f"  FAIL  accuracy worse than half a hole pitch "
+              f"({g.PITCH / 2:.2f} mm)")
+        failures += 1
+
+    # The real test: ask for a hole, and see which hole the dot lands in.
+    exact = 0
+    probes = ["E20", "E22", "E26", "A5", "J60", "T+12", "B-40", "E32"]
+    for ref in probes:
+        angles = a.angles_for_hole(ref)
+        if angles is None:
+            print(f"  FAIL  no aim solution for {ref}")
+            failures += 1
+            continue
+        head.move(*angles)
+        landed = g.nearest_hole(*head.hit(head.pose.pan, head.pose.tilt),
+                                tolerance=g.PITCH)
+        xz = g.hole_xz(ref)
+        hx, hz = head.hit(head.pose.pan, head.pose.tilt)
+        err = ((hx - xz[0]) ** 2 + (hz - xz[1]) ** 2) ** 0.5
+        ok = landed == ref
+        exact += ok
+        print(f"  {'ok  ' if ok else 'MISS'} asked {ref:<5} -> landed {landed}  "
+              f"({err:.2f} mm off)")
+    print(f"  {exact}/{len(probes)} landed in the exact hole")
+    if exact < len(probes) - 1:
+        failures += 1
+    return failures
+
+
 def main() -> None:
-    failures = run()
+    failures = run() + run_aiming()
     print(f"\n{'PASS' if failures == 0 else str(failures) + ' FAILURE(S)'}")
     sys.exit(1 if failures else 0)
 

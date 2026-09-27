@@ -9,3 +9,5 @@ __pycache__/
 # web
 web/node_modules/
 web/dist/
+calibration.json
+pixel_calibration.json

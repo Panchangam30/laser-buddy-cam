@@ -227,3 +227,17 @@ body { background: var(--bg); color: var(--text); }
 .viewswitch button.on { background: var(--accent); color: #1a1600; font-weight: 600; }
 
 .instruction .tally { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+
+/* --- laser ---------------------------------------------------------------- */
+
+.laser { margin-top: 18px; }
+.laser .trackbtn.on { background: #3a1f22; border-color: #6b2f33; color: #ff9d95; }
+
+.calbar {
+  height: 4px; background: #1b1e24; border-radius: 3px;
+  overflow: hidden; margin: 7px 0;
+}
+.calbar span {
+  display: block; height: 100%; background: var(--accent);
+  transition: width 0.3s ease;
+}

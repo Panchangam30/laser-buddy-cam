@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import json
 import os
 import threading
@@ -33,10 +34,18 @@ import numpy as np
 
 from . import board as bd
 from . import detect, geometry as g, label, world
+from .aim import Calibrator, find_dot
+from .laser import LaserLink, find_port
 from .track import Tracker
 
 #: Never spend two identification calls inside this window.
 LABEL_INTERVAL_S = 4.0
+
+#: While the laser is on, ignore detections this close to where it is aimed.
+#: A laser dot is a small bright red spot sitting on the board, which is a
+#: perfectly good description of a red LED -- left alone it becomes a tracked
+#: part, gets an identification spent on it, and appears in the world map.
+LASER_IGNORE_MM = 7.0
 
 
 def _load_env() -> None:
@@ -61,6 +70,11 @@ class VisionEngine:
         self.api_key = api_key
         self.labelling = labelling
         self.tracker = Tracker()
+        self.laser = LaserLink()
+        self.calibrator = Calibrator()
+        self._frame_at = 0.0
+        self._aimed_at: tuple[float, float] | None = None
+        self._aimed_hole = ""
         self.flipped = False
         self.orientation_source = "assumed"
         self._lock = threading.Lock()
@@ -79,6 +93,7 @@ class VisionEngine:
         with self._lock:
             self._frames += 1
             self._frame = frame
+            self._frame_at = time.time()
             pose = bd.find_board(frame, flipped=self.flipped)
             self._pose = pose
 
@@ -92,7 +107,7 @@ class VisionEngine:
 
             rect = pose.rectify(frame)
             self._rect = rect
-            self.tracker.update(detect.find_blobs(rect))
+            self.tracker.update(self._without_laser_dot(detect.find_blobs(rect)))
             self._world = world.build(pose, self.tracker.live(), self._frames, self._errors[:])
             snapshot = self._world.serialise()
             snapshot["orientation"] = {"flipped": self.flipped, "source": self.orientation_source}
@@ -106,6 +121,167 @@ class VisionEngine:
         if should_label:
             threading.Thread(target=self._label_pass, daemon=True).start()
         return snapshot
+
+    def _without_laser_dot(self, blobs: list) -> list:
+        """Drop the laser's own dot, so it is never mistaken for a component."""
+        if not (self.laser.laser_on and self._aimed_at):
+            return blobs
+        ax, az = self._aimed_at
+        return [b for b in blobs
+                if (b.centre[0] - ax) ** 2 + (b.centre[1] - az) ** 2
+                > LASER_IGNORE_MM ** 2]
+
+    def next_frame(self, timeout: float = 3.0):
+        """A frame that arrived after this call, for the calibration loop.
+
+        Calibration has to know that what it is looking at is the scene AFTER the
+        head moved, not the frame that was already in hand when it asked. The
+        browser is streaming while tracking is on, so this just waits for the
+        next one.
+        """
+        asked = time.time()
+        deadline = asked + timeout
+        while time.time() < deadline:
+            with self._lock:
+                if self._frame is not None and self._frame_at > asked:
+                    return self._frame.copy()
+            time.sleep(0.04)
+        return None
+
+    def pose_of(self, frame):
+        return bd.find_board(frame, flipped=self.flipped)
+
+    # ---------------------------------------------------------------- pointing
+
+    def point_at(self, x: float, z: float, hole: str = "") -> dict:
+        """Aim the laser at a board position and switch it on."""
+        aimer = self.calibrator.aimer
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        if not aimer.ready:
+            return {"ok": False, "error": "the laser has not been calibrated yet"}
+        if not aimer.covers(x, z):
+            return {"ok": False, "error":
+                    f"{hole or 'that spot'} is outside the area the calibration "
+                    f"covers, so I would only be guessing where to point"}
+
+        angles = aimer.angles_for(x, z)
+        if angles is None:
+            return {"ok": False, "error": "no aim solution"}
+        if not self.laser.move(*angles):
+            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+        self.laser.set_laser(True)
+        with self._lock:
+            self._aimed_at = (x, z)
+            self._aimed_hole = hole
+        return {"ok": True, "hole": hole, "pan": round(angles[0], 1),
+                "tilt": round(angles[1], 1), "accuracy": aimer.quality()}
+
+    def point_at_hole(self, ref: str) -> dict:
+        xz = g.hole_xz(ref)
+        if xz is None:
+            return {"ok": False, "error": f"{ref!r} is not a hole on this board"}
+        return self.point_at(*xz, hole=ref.upper())
+
+    #: Degrees per nudge. Sized for speech: "a bit" should be a visible change
+    #: without being a lurch, and three of them should cross the working area.
+    NUDGE = {"tiny": 2.0, "small": 5.0, "medium": 12.0, "large": 25.0}
+
+    #: Which way each spoken direction turns the servos. Pan is inverted because
+    #: on this rig increasing pan carries the dot to the LEFT of the camera's
+    #: view -- measured, not assumed, and worth stating because it is the one
+    #: thing that makes voice control feel broken if it is backwards.
+    DIRECTION = {
+        "left":  (+1.0, 0.0),
+        "right": (-1.0, 0.0),
+        "up":    (0.0, +1.0),
+        "down":  (0.0, -1.0),
+    }
+
+    def _ready(self) -> str:
+        """Make sure the head is usable. Returns "" when it is, else why not.
+
+        Reconnects by itself. Unplugging and replugging the board is a normal
+        thing to do at a bench, and it should not leave every command failing
+        until someone notices and restarts the service.
+        """
+        if self.laser.connected:
+            return ""
+        if self.laser.connect():
+            return ""
+        return self.laser.error or "the laser is not connected"
+
+    def move_to(self, pan: float | None = None, tilt: float | None = None) -> dict:
+        """Absolute move. Either axis may be left alone."""
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        p = self.laser.pose.pan if pan is None else float(pan)
+        t = self.laser.pose.tilt if tilt is None else float(tilt)
+        if not self.laser.move(p, t):
+            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+        return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
+
+    def nudge(self, direction: str, amount: str = "small") -> dict:
+        """Relative move in a spoken direction."""
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        key = (direction or "").strip().lower()
+        if key not in self.DIRECTION:
+            return {"ok": False, "error": f"I can move left, right, up or down, not {direction!r}"}
+        step = self.NUDGE.get((amount or "small").strip().lower(), self.NUDGE["small"])
+        dp, dt = self.DIRECTION[key]
+        ok = self.laser.move(self.laser.pose.pan + dp * step,
+                             self.laser.pose.tilt + dt * step)
+        if not ok:
+            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+        # Report when an axis is against its stop, so the assistant can say so
+        # rather than repeating a move that will not do anything.
+        from .laser import PAN_MAX, PAN_MIN, TILT_MAX, TILT_MIN
+        at_limit = (self.laser.pose.pan in (PAN_MIN, PAN_MAX)
+                    or self.laser.pose.tilt in (TILT_MIN, TILT_MAX))
+        return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt,
+                "movedBy": step, "atLimit": at_limit}
+
+    def laser_power(self, on: bool) -> dict:
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        return {"ok": self.laser.set_laser(bool(on)), "laserOn": self.laser.laser_on}
+
+    def laser_off(self) -> dict:
+        if not self.laser.connected:
+            # Deliberately no reconnect: a disconnected laser is already off,
+            # and opening the port resets the board, which is a strange thing
+            # for "turn it off" to do.
+            return {"ok": True, "laserOn": False}
+        ok = self.laser.set_laser(False)
+        with self._lock:
+            self._aimed_at = None
+            self._aimed_hole = ""
+        return {"ok": ok}
+
+    def laser_status(self) -> dict:
+        return {**self.laser.status(),
+                "aimedAt": self._aimed_hole,
+                "calibration": self.calibrator.status(),
+                "portAvailable": find_port()}
+
+    def start_calibration(self) -> dict:
+        if not self.laser.connected:
+            return {"ok": False, "error": self.laser.error or "the laser is not connected"}
+        if self._frame is None:
+            return {"ok": False, "error":
+                    "no camera frames yet -- turn board tracking on first"}
+        if self.calibrator.running:
+            return {"ok": False, "error": "already calibrating"}
+        threading.Thread(
+            target=self.calibrator.run,
+            args=(self.laser, self.next_frame, self.pose_of),
+            daemon=True).start()
+        return {"ok": True}
 
     def _label_pass(self) -> None:
         with self._lock:
@@ -158,6 +334,8 @@ class VisionEngine:
         with self._lock:
             return {
                 "ok": True,
+                "laser": self.laser.status(),
+                "calibration": self.calibrator.status(),
                 "frames": self._frames,
                 "tracks": len(self.tracker.tracks),
                 "stable": len(self.tracker.live()),
@@ -287,6 +465,8 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.health())
             if path == "/vision/world":
                 return self._json(200, engine.snapshot())
+            if path == "/vision/laser":
+                return self._json(200, engine.laser_status())
             if path == "/vision/debug.jpg":
                 view = "frame" if "view=frame" in query else "rect"
                 img = engine.debug_image(view)
@@ -319,6 +499,52 @@ def make_handler(engine: VisionEngine):
             if self.path == "/vision/orientation":
                 return self._json(200, engine.set_flipped(bool(body.get("flipped"))))
 
+            if self.path == "/vision/laser/connect":
+                ok = engine.laser.connect(body.get("port") or None)
+                return self._json(200 if ok else 503,
+                                  {"ok": ok, **engine.laser_status()})
+
+            if self.path == "/vision/laser/disconnect":
+                engine.laser.disconnect()
+                return self._json(200, {"ok": True, **engine.laser_status()})
+
+            if self.path == "/vision/laser/point":
+                hole = body.get("hole")
+                if isinstance(hole, str) and hole.strip():
+                    return self._json(200, engine.point_at_hole(hole))
+                x, z = body.get("x"), body.get("z")
+                if isinstance(x, (int, float)) and isinstance(z, (int, float)):
+                    return self._json(200, engine.point_at(float(x), float(z)))
+                return self._json(400, {"error": "supply a hole, or x and z in mm"})
+
+            if self.path == "/vision/laser/move":
+                return self._json(200, engine.move_to(body.get("pan"), body.get("tilt")))
+
+            if self.path == "/vision/laser/nudge":
+                return self._json(200, engine.nudge(str(body.get("direction", "")),
+                                                    str(body.get("amount", "small"))))
+
+            if self.path == "/vision/laser/power":
+                return self._json(200, engine.laser_power(bool(body.get("on"))))
+
+            if self.path == "/vision/laser/off":
+                return self._json(200, engine.laser_off())
+
+            if self.path == "/vision/laser/centre":
+                # Report what actually happened. Saying "centred" when the head
+                # never moved is worse than an error: the student trusts it.
+                problem = engine._ready()
+                ok = False if problem else engine.laser.centre()
+                return self._json(200, {"ok": ok, "error": problem or None,
+                                        **engine.laser_status()})
+
+            if self.path == "/vision/laser/calibrate":
+                return self._json(200, engine.start_calibration())
+
+            if self.path == "/vision/laser/cancel":
+                engine.calibrator.cancel()
+                return self._json(200, {"ok": True})
+
             if self.path == "/vision/reset":
                 engine.reset()
                 return self._json(200, {"ok": True})
@@ -328,12 +554,48 @@ def make_handler(engine: VisionEngine):
     return Handler
 
 
+class _Server(ThreadingHTTPServer):
+    # Without this a restart inside the TCP TIME_WAIT window is refused, which
+    # makes an ordinary stop-and-start look like the port is occupied.
+    allow_reuse_address = True
+
+
 def serve(port: int, engine: VisionEngine) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(engine))
+    try:
+        server = _Server(("127.0.0.1", port), make_handler(engine))
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        # A traceback here says nothing useful. The cause is nearly always a
+        # second copy already running -- often one started by hand earlier,
+        # which is invisible from a `npm run dev` that just failed.
+        raise SystemExit(
+            f"Port {port} is already in use, so the vision service cannot start.\n"
+            f"  Almost always this is another copy already running. Check with:\n"
+            f"      lsof -ti:{port}\n"
+            f"  and stop it with:\n"
+            f"      pkill -f vision.service\n"
+            f"  Or run this one elsewhere:  --port {port + 1}  "
+            f"(and set VISION_URL to match)") from None
+
     print(f"vision service on http://127.0.0.1:{port}")
     print(f"  labelling: {'on' if engine.labelling and engine.api_key else 'off'}"
           f"   debug view: http://127.0.0.1:{port}/vision/debug.jpg")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopping")
+    finally:
+        # Leave the head safe: a service that dies with the beam on is exactly
+        # the situation the firmware's timeout exists to cover, and relying on
+        # that when we could just switch it off is careless.
+        try:
+            if engine.laser.connected:
+                engine.laser.set_laser(False)
+                engine.laser.disconnect()
+        except Exception:
+            pass
+        server.server_close()
 
 
 def standalone(camera: int, engine: VisionEngine) -> None:
@@ -342,8 +604,12 @@ def standalone(camera: int, engine: VisionEngine) -> None:
     if not cap.isOpened():
         raise SystemExit("could not open camera -- check macOS camera permissions "
                          "(System Settings > Privacy & Security > Camera)")
-    print("[f] flip which end is column 1   [r] reset   [q] quit")
+    print("[f] flip column 1   [r] reset   [v] view   [q] quit")
+    print("[l] connect laser   [k] calibrate   [1-9] point at a hole   [0] laser off")
     view = "rect"
+    # Spread across the board, so the number keys are a quick way to see whether
+    # the calibration holds at the ends as well as in the middle.
+    spots = ["E4", "E12", "E20", "E28", "E32", "E40", "E48", "E56", "E60"]
     try:
         while True:
             ok, frame = cap.read()
@@ -352,6 +618,11 @@ def standalone(camera: int, engine: VisionEngine) -> None:
             engine.analyse(frame)
             img = engine.debug_image(view)
             if img is not None:
+                if engine.calibrator.running:
+                    c = engine.calibrator
+                    cv2.putText(img, f"calibrating {c.done}/{c.total}  {c.progress}",
+                                (8, img.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, (80, 220, 255), 1, cv2.LINE_AA)
                 cv2.imshow("vision -- board map", img)
             k = cv2.waitKey(1) & 0xFF
             if k in (ord("q"), 27):
@@ -362,6 +633,15 @@ def standalone(camera: int, engine: VisionEngine) -> None:
                 engine.reset()
             if k == ord("v"):
                 view = "frame" if view == "rect" else "rect"
+            if k == ord("l"):
+                print("laser:", "connected" if engine.laser.connect()
+                      else f"failed -- {engine.laser.error}")
+            if k == ord("k"):
+                print("calibrating:", engine.start_calibration())
+            if k == ord("0"):
+                engine.laser_off()
+            if ord("1") <= k <= ord("9"):
+                print(engine.point_at_hole(spots[k - ord("1")]))
     finally:
         cap.release()
         cv2.destroyAllWindows()

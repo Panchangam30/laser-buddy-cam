@@ -59,6 +59,73 @@ export const TOOLS = [
   },
   {
     type: "function",
+    name: "point_at",
+    description: "Shine the laser pointer on a hole on the student's actual "
+      + "breadboard, so they can see exactly which one you mean. Use this "
+      + "instead of describing a location whenever you are telling them where "
+      + "to put something. Call it with no hole to point at whatever you have "
+      + "just told them to do.",
+    parameters: {
+      type: "object",
+      properties: {
+        hole: {
+          type: "string",
+          description: "A hole such as 'E20' or 'T+12'. Leave out to point at "
+            + "the hole the current advice is about.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    type: "function",
+    name: "move_laser",
+    description: "Move the laser head by voice. Use `direction` for relative "
+      + "moves, which is what most spoken instructions are -- 'left a bit', "
+      + "'up', 'further right'. Use `pan` and `tilt` only when the student names "
+      + "exact angles. To turn the beam on or off use laser_power instead.",
+    parameters: {
+      type: "object",
+      properties: {
+        direction: {
+          type: "string",
+          enum: ["left", "right", "up", "down"],
+          description: "Which way to move, from the student's point of view.",
+        },
+        amount: {
+          type: "string",
+          enum: ["tiny", "small", "medium", "large"],
+          description: "How far. 'tiny' is a couple of degrees, 'large' crosses "
+            + "most of the working area. Default small. Map 'a bit'/'slightly' "
+            + "to tiny or small, and 'a lot'/'way over' to large.",
+        },
+        pan: { type: "number", description: "Absolute pan angle, 10 to 170." },
+        tilt: { type: "number", description: "Absolute tilt angle, 20 to 160." },
+      },
+      required: [],
+    },
+  },
+  {
+    type: "function",
+    name: "laser_power",
+    description: "Switch the laser beam on or off. The head can be moved with "
+      + "the beam off; turn it on when the student wants to see where it is "
+      + "pointing.",
+    parameters: {
+      type: "object",
+      properties: { on: { type: "boolean", description: "True for on." } },
+      required: ["on"],
+    },
+  },
+  {
+    type: "function",
+    name: "centre_laser",
+    description: "Return the head to the middle of its travel and switch the "
+      + "beam off. Use this when the student says centre it, reset it, or stop.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
     name: "where_is",
     description: "Find one part on the board by name and say which holes it is "
       + "in. Use this when the student asks 'where is my resistor' or 'is the "
@@ -114,6 +181,21 @@ The live map is measured, not guessed: hole references in it come from the
 board's grid, so trust them over your own reading of a photo. What it cannot do
 is read markings -- a part it lists without a value is one whose markings were
 not legible, and you must not fill the value in yourself.
+
+You have a laser pointer aimed at their real board, and you can drive it.
+
+When you tell them where something goes, call point_at so they can see the hole
+rather than counting columns. Saying "column 26" and lighting up column 26
+together is the whole point of the rig.
+
+They can also just tell you where to move it. "Left a bit", "up", "further
+right", "centre it" -- call move_laser for those, with a direction and an
+amount. Move first and speak after, so the beam and your words arrive together;
+do not narrate what you are about to do. If a move comes back at a limit, say so
+plainly rather than nudging again in the same direction.
+
+The head can be moved with the beam off. Turn it on with laser_power when they
+want to see where it is pointing, and off when they are done.
 
 Call goto_step whenever you discuss a different step, so the 3D view follows you.
 If the student asks how they are doing, or says it is not working, call

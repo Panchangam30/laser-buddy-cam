@@ -47,6 +47,11 @@ export interface Guidance {
   progress: { placed: number; expected: number };
   /** One sentence: the single most useful thing to do next. */
   nextAction: string;
+  /**
+   * The holes the student should be looking at, for the laser to point out.
+   * Same subject as nextAction, so the dot and the sentence always agree.
+   */
+  focus: { holes: string[]; why: string };
   /** True when there is no live map to compare against. */
   blind: boolean;
 }
@@ -186,8 +191,48 @@ export function reconcile(plan: Plan, world: World, step: number): Guidance {
     checks, extras, issues, currentStep, completeSteps,
     progress: { placed: placedIds.size, expected },
     nextAction: nextAction(plan, world, checks, issues, blind, currentStep),
+    focus: focusOf(plan, checks, issues, currentStep),
     blind,
   };
+}
+
+/**
+ * Which holes the advice is about.
+ *
+ * Kept in the same order of priority as nextAction, so the laser points at
+ * whatever the sentence is talking about. A dot on one hole and a sentence about
+ * another is worse than no dot at all.
+ */
+function focusOf(plan: Plan, checks: PartCheck[], issues: Issue[],
+                 currentStep: number): { holes: string[]; why: string } {
+  const onBoard = (pins: string[]) => pins.filter((p) => netOf(p) !== null);
+
+  const fault = issues.find((i) => i.severity === "error");
+  if (fault?.entities.length) {
+    const c = checks.find((x) => x.entity && fault.entities.includes(x.entity.id));
+    if (c?.entity) return { holes: onBoard(c.entity.pins), why: fault.message };
+  }
+
+  const misplaced = checks.find((c) => c.status === "misplaced");
+  // Point at where it SHOULD go, not where it is: the student can already see
+  // where they put it.
+  if (misplaced) {
+    return { holes: onBoard(misplaced.part.pins),
+             why: `where ${misplaced.part.label} belongs` };
+  }
+
+  const missing = checks.find((c) => c.status === "missing");
+  if (missing) {
+    return { holes: onBoard(missing.part.pins),
+             why: `where ${missing.part.label} goes` };
+  }
+
+  const step = plan.steps.find((s) => s.n === currentStep);
+  const adds = step?.adds.flatMap(
+    (id) => onBoard(plan.parts.find((p) => p.id === id)?.pins ?? [])) ?? [];
+  if (adds.length) return { holes: adds, why: step?.title ?? "the next step" };
+
+  return { holes: [], why: "" };
 }
 
 function nextAction(plan: Plan, world: World, checks: PartCheck[], issues: Issue[],
@@ -246,5 +291,8 @@ export function guidanceText(plan: Plan, world: World, g: Guidance): string {
       + g.extras.map((e) => `${e.label} at ${e.footprint}`).join("; "));
   }
   lines.push(`Next: ${g.nextAction}`);
+  if (g.focus.holes.length) {
+    lines.push(`The holes that matter for that: ${g.focus.holes.join(", ")}.`);
+  }
   return lines.join("\n");
 }
