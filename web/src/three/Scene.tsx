@@ -7,17 +7,21 @@ import { WorldLayer } from "./World";
 import type { Plan } from "../lib/types";
 import type { World } from "../lib/world";
 import type { Guidance } from "../lib/guidance";
+import { KitPartsLayer, type PlacedKitPart } from "../components/StarterKit";
+import { useState } from "react";
 
 /**
  * What the student is looking at.
  *
- * "plan" is the circuit they are aiming for, "live" is the map of what is
- * actually on their bench, and "compare" draws the plan faintly underneath the
- * live map so the difference is visible rather than described.
+ * "plan" is the circuit they are aiming for and "live" is the map of what is
+ * actually on their bench.
  */
-export type ViewMode = "plan" | "live" | "compare";
+export type ViewMode = "plan" | "live";
 
-export function Scene({ plan, step, exploded, mode, world, guidance, labels }: {
+export function Scene({ plan, step, exploded, mode, world, guidance, labels,
+  kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
+  onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {},
+}: {
   plan: Plan;
   step: number;
   exploded: boolean;
@@ -25,16 +29,20 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels }: {
   world: World;
   guidance: Guidance;
   labels: boolean;
+  kitParts?: PlacedKitPart[];
+  selectedKitPart?: string | null;
+  onSelectKitPart?: (id: string | null) => void;
+  onMoveKitPart?: (id: string, position: [number, number, number]) => void;
+  onDeleteKitPart?: (id: string) => void;
+  onWireChange?: (id: string, end: "start" | "end", position: [number, number, number], target?: string) => void;
 }) {
+  const [focusedMove, setFocusedMove] = useState(false);
   const visibleAt = new Map<string, number>();
   plan.steps.forEach((s) => s.adds.forEach((id) => visibleAt.set(id, s.n)));
   const currentIds = new Set(plan.steps.find((s) => s.n === step)?.adds ?? []);
 
   const showPlan = mode !== "live";
   const showWorld = mode !== "plan";
-  // In compare the plan is context, not the subject: drawn back so the live map
-  // reads on top of it instead of fighting it.
-  const planDimmed = mode === "compare";
 
   return (
     <Canvas
@@ -66,8 +74,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels }: {
           const isCurrent = currentIds.has(p.id);
           return (
             <group key={p.id} position={exploded && isCurrent ? [0, 26, 0] : [0, 0, 0]}>
-              <PartMesh part={p} highlighted={isCurrent && !planDimmed}
-                        dimmed={planDimmed || (!isCurrent && exploded)} />
+              <PartMesh part={p} highlighted={isCurrent}
+                        dimmed={!isCurrent && exploded} />
             </group>
           );
         })}
@@ -75,10 +83,16 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels }: {
         {showWorld && (
           <WorldLayer world={world} guidance={guidance} showLabels={labels} />
         )}
+
+        {mode === "plan" && (
+          <KitPartsLayer parts={kitParts} selectedId={selectedKitPart}
+            onSelect={onSelectKitPart} onMove={onMoveKitPart} onDelete={onDeleteKitPart}
+            onWireChange={onWireChange} onInteractionChange={setFocusedMove} />
+        )}
       </group>
 
       <ContactShadows position={[0, -4.6, 0]} opacity={0.62} scale={280} blur={2.2} far={50} />
-      <OrbitControls makeDefault enablePan target={[0, 0, 0]}
+      <OrbitControls makeDefault enablePan enabled={!focusedMove} target={[0, 0, 0]}
         minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />
     </Canvas>
   );

@@ -9,6 +9,8 @@
     "dev:web": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "playwright test",
+    "test:e2e": "playwright test",
     "dev:vision": "cd .. && .venv/bin/python -m vision.service"
   },
   "dependencies": {

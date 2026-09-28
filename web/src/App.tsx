@@ -16,6 +16,10 @@ import type { Plan } from "./lib/types";
 import { OpenAIVoiceSession } from "./lib/realtime";
 import { GrokVoiceSession } from "./lib/grokVoice";
 import type { RealtimeStatus, Utterance, VoiceSession } from "./lib/voice";
+import {
+  ComponentsDrawer, STARTER_KIT_PARTS, type PlacedKitPart,
+} from "./components/StarterKit";
+import { SiteFooter } from "./components/SiteFooter";
 import "./App.css";
 
 /** How often a frame goes to the vision service while tracking is on. */
@@ -39,9 +43,13 @@ export default function App() {
   const [world, setWorld] = useState<World>(EMPTY_WORLD);
   const [tracking, setTracking] = useState(false);
   const [visionErr, setVisionErr] = useState("");
-  const [mode, setMode] = useState<ViewMode>("compare");
+  const [mode, setMode] = useState<ViewMode>("plan");
   const [labels, setLabels] = useState(true);
   const [showMap, setShowMap] = useState(false);
+  const [componentsOpen, setComponentsOpen] = useState(false);
+  const [kitParts, setKitParts] = useState<PlacedKitPart[]>([]);
+  const [selectedKitPart, setSelectedKitPart] = useState<string | null>(null);
+  const nextKitId = useRef(1);
 
   // --- live voice ---
   const [voice, setVoice] = useState<RealtimeStatus>("idle");
@@ -319,6 +327,28 @@ export default function App() {
 
   useEffect(() => () => sessionRef.current?.disconnect(), []);
 
+  const addKitPart = useCallback((partId: string, position?: [number, number, number]) => {
+    const definition = STARTER_KIT_PARTS.find((part) => part.id === partId);
+    if (!definition) return;
+    const instanceId = `${partId}-${nextKitId.current++}`;
+    const offset = (kitParts.length % 5) * 7 - 14;
+    const placedAt = position ?? [offset, 5.7, 8] as [number, number, number];
+    setKitParts((items) => [...items, {
+      ...definition, instanceId, position: placedAt, rotation: 0,
+      ...(definition.shape === "wire" ? {
+        wireStart: [placedAt[0] - 9, 7.5, placedAt[2]] as [number, number, number],
+        wireEnd: [placedAt[0] + 9, 7.5, placedAt[2]] as [number, number, number],
+      } : {}),
+    }]);
+    setSelectedKitPart(instanceId);
+  }, [kitParts.length]);
+
+  useEffect(() => {
+    const handleAdd = (event: Event) => addKitPart((event as CustomEvent<string>).detail);
+    window.addEventListener("add-starter-part", handleAdd);
+    return () => window.removeEventListener("add-starter-part", handleAdd);
+  }, [addKitPart]);
+
   async function onCapture(dataUrl: string) {
     setBusy(true); setError("");
     try {
@@ -422,21 +452,71 @@ export default function App() {
             );
           })}
         </section>
+        <SiteFooter compact />
       </aside>
 
-      <main className="stage">
+      <main className={`stage ${mode === "plan" ? "plan-stage" : ""}`}
+        onDragOver={(event) => {
+          if (mode !== "plan" || !event.dataTransfer.types.includes("application/x-starter-part")) return;
+          event.preventDefault(); event.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(event) => {
+          if (mode !== "plan") return;
+          const partId = event.dataTransfer.getData("application/x-starter-part");
+          if (!partId) return;
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = ((event.clientX - rect.left) / rect.width - 0.5) * 150;
+          const z = ((event.clientY - rect.top) / rect.height - 0.48) * 90;
+          addKitPart(partId, [Math.max(-74, Math.min(74, x)), 5.7, Math.max(-45, Math.min(45, z))]);
+        }}>
         <Scene plan={plan} step={step} exploded={exploded}
-               mode={mode} world={world} guidance={guidance} labels={labels} />
+               mode={mode} world={world} guidance={guidance} labels={labels}
+               kitParts={kitParts} selectedKitPart={selectedKitPart}
+               onSelectKitPart={setSelectedKitPart}
+               onMoveKitPart={(id, position) => setKitParts((items) => items.map((item) =>
+                 item.instanceId === id ? { ...item, position } : item))}
+               onWireChange={(id, end, position, target) => setKitParts((items) => items.map((item) => {
+                 if (item.instanceId !== id) return item;
+                 return end === "start"
+                   ? { ...item, wireStart: position, wireStartTarget: target }
+                   : { ...item, wireEnd: position, wireEndTarget: target };
+               }))}
+               onDeleteKitPart={(id) => {
+                 setKitParts((items) => items.filter((item) => item.instanceId !== id));
+                 setSelectedKitPart((selected) => selected === id ? null : selected);
+               }} />
 
         {showMap && <BoardMap onClose={() => setShowMap(false)} live={tracking} />}
 
         <div className="viewswitch">
-          {(["plan", "compare", "live"] as ViewMode[]).map((m) => (
+          {(["plan", "live"] as ViewMode[]).map((m) => (
             <button key={m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>
-              {m === "plan" ? "Plan" : m === "live" ? "My board" : "Compare"}
+              {m === "plan" ? "Plan" : "My board"}
             </button>
           ))}
         </div>
+
+        <a className="docs-trigger" href="/docs">Docs</a>
+
+        {mode === "plan" && (
+          <>
+            <ComponentsDrawer open={componentsOpen} onToggle={() => setComponentsOpen((value) => !value)}
+              count={kitParts.length} />
+            {kitParts.length > 0 && (
+              <div className="part-actions">
+                <span>{selectedKitPart ? "Part selected" : `${kitParts.length} placed`}</span>
+                <button disabled={!selectedKitPart} onClick={() => setKitParts((items) => items.map((item) =>
+                  item.instanceId === selectedKitPart ? { ...item, rotation: item.rotation + Math.PI / 4 } : item))}>Rotate</button>
+                <button disabled={!selectedKitPart} onClick={() => {
+                  setKitParts((items) => items.filter((item) => item.instanceId !== selectedKitPart));
+                  setSelectedKitPart(null);
+                }}>Delete</button>
+                <button onClick={() => { setKitParts([]); setSelectedKitPart(null); }}>Clear</button>
+              </div>
+            )}
+          </>
+        )}
 
         <div className="instruction">
           {mode !== "plan" && world.frame > 0 ? (
