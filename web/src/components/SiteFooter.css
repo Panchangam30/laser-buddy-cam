@@ -1,28 +1,29 @@
 .site-footer {
-  margin-top: 54px; padding: 24px 0 4px; border-top: 1px solid #282b32;
+  margin-top: 40px; padding: 20px 0 4px; border-top: 1px solid var(--rule);
   display: flex; align-items: flex-start; justify-content: space-between; gap: 28px;
-  color: #8e9099; font: 11px/1.55 ui-sans-serif, -apple-system, system-ui, sans-serif;
+  color: var(--ink-dim); font: 11.5px/1.55 var(--sans);
 }
 .site-footer-project { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
 .site-footer-live {
   display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px;
-  border: 1px solid #4a4213; border-radius: 7px; background: #211e08;
-  color: #ffcc00 !important; text-decoration: none !important; font-weight: 700;
+  border: 1px solid var(--rule); border-radius: var(--r-pill); background: transparent;
+  color: var(--ink-dim) !important; text-decoration: none !important; font-weight: 500;
+  transition: color .12s ease, border-color .12s ease;
 }
-.site-footer-live:hover { border-color: #ffcc00; background: #2a2505; }
-.site-footer-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #ffcc00; box-shadow: 0 0 8px rgba(255,204,0,.65); }
-.site-footer-url { padding-left: 3px; color: #62666e; font-family: "SFMono-Regular", Consolas, monospace; font-size: 9px; }
+.site-footer-live:hover { color: var(--ink) !important; border-color: var(--ink-faint); }
+.site-footer-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+.site-footer-url { padding-left: 3px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; }
 .site-footer-meta { max-width: 470px; text-align: right; }
 .site-footer-meta > span { display: block; }
 .site-footer-meta nav { display: flex; justify-content: flex-end; gap: 14px; margin-top: 8px; }
 .site-footer-meta a { color: #aeb1b8 !important; text-decoration: none !important; }
-.site-footer-meta a:hover { color: #ffcc00 !important; }
+.site-footer-meta a:hover { color: var(--ink) !important; }
 
 .site-footer.compact {
   position: absolute; z-index: 6; right: 14px; bottom: 17px; margin: 0;
   align-items: center; max-width: 610px; padding: 7px 9px;
-  border: 1px solid rgba(48,51,59,.85); border-radius: 9px;
-  background: rgba(14,16,20,.88); backdrop-filter: blur(10px);
+  border: 1px solid var(--rule); border-radius: var(--r-pill);
+  background: rgba(22,24,27,.8); backdrop-filter: blur(16px);
 }
 .site-footer.compact .site-footer-project { flex-direction: row; align-items: center; }
 .site-footer.compact .site-footer-live { padding: 6px 8px; }
@@ -35,7 +36,7 @@
   border-width: 1px 0 0; border-radius: 0; background: transparent; backdrop-filter: none;
 }
 .panel .site-footer.compact .site-footer-project { width: 100%; }
-.panel .site-footer.compact .site-footer-live { width: 100%; justify-content: center; }
+.panel .site-footer.compact .site-footer-live { width: auto; }
 .panel .site-footer.compact .site-footer-meta { text-align: left; }
 .panel .site-footer.compact .site-footer-meta nav { justify-content: flex-start; }
 

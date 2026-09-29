@@ -9,6 +9,7 @@
  */
 
 import type { PartKind } from "./types";
+import type { WorkspaceDescriptor, WorkspaceLocation } from "./workspace";
 
 /** One physical thing seen on the board. */
 export interface Entity {
@@ -26,6 +27,10 @@ export interface Entity {
   shape: "wire" | "body";
   /** Holes the renderer draws it between. */
   pins: string[];
+  /** Scoped locations corresponding to pins; pins remains for v1 compatibility. */
+  locations?: WorkspaceLocation[];
+  /** Bodies whose bare leads are not visible do not have measured terminals. */
+  terminalEvidence?: "measured" | "inferred" | "unknown";
   /** Every hole its body covers. */
   holes: string[];
   /** "E20 to E22" for a jumper, "E/F40-47" for a body. */
@@ -64,6 +69,8 @@ export interface BoardPose {
   note?: string;
   widthMm?: number;
   depthMm?: number;
+  registrationMethod?: string;
+  registrationValidation?: string;
   /** Set only when found is false. */
   reason?: string;
   hint?: string;
@@ -73,6 +80,15 @@ export interface World {
   at: number;
   frame: number;
   board: BoardPose;
+  workspace?: WorkspaceDescriptor & {
+    registration?: {
+      found: boolean;
+      confidence?: "high" | "medium" | "low";
+      method?: string;
+      validation?: string;
+      note?: string;
+    };
+  };
   entities: Entity[];
   /** net id -> entity ids sharing it. Two parts on one net are already joined. */
   nets: Record<string, string[]>;

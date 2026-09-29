@@ -12,15 +12,19 @@
  * strings would mark a working circuit wrong, which is worse than saying nothing.
  */
 
-import { netOf } from "./breadboard";
 import type { Part, Plan } from "./types";
 import type { Entity, Issue, World } from "./world";
+import {
+  anchorLocation, intrinsicNode, legacyPinLocation, type WorkspaceLocation,
+} from "./workspace";
 
 export type PartStatus =
   /** Present, and on the right nodes. */
   | "placed"
   /** Something of the right kind is on the board, but not wired where the plan says. */
   | "misplaced"
+  /** Present, but this workspace cannot prove its electrical attachment. */
+  | "unverified"
   /** The step that adds it has been reached, and it is not there. */
   | "missing"
   /** The student has not got to this step yet. */
@@ -31,6 +35,7 @@ export interface PartCheck {
   step: number;
   status: PartStatus;
   entity?: Entity;
+  evidence: "measured" | "inferred" | "unknown";
   /** A sentence that can be read out as is. */
   detail: string;
 }
@@ -51,7 +56,7 @@ export interface Guidance {
    * The holes the student should be looking at, for the laser to point out.
    * Same subject as nextAction, so the dot and the sentence always agree.
    */
-  focus: { holes: string[]; why: string };
+  focus: { targets: WorkspaceLocation[]; holes: string[]; why: string };
   /** True when there is no live map to compare against. */
   blind: boolean;
 }
@@ -60,7 +65,7 @@ export interface Guidance {
 function netsOf(pins: string[]): Set<string> {
   const out = new Set<string>();
   for (const p of pins) {
-    const n = netOf(p);
+    const n = intrinsicNode(legacyPinLocation(p));
     // A pin that resolves to nothing is off-board (EXT:) -- it has no node on
     // the board, so it cannot be checked here and is deliberately skipped.
     if (n) out.add(n);
@@ -137,6 +142,9 @@ function assign(parts: Part[], entities: Entity[]): Map<string, Entity> {
 
 export function reconcile(plan: Plan, world: World, step: number): Guidance {
   const blind = !world.board.found || world.frame === 0;
+  const connectivity = world.workspace?.capabilities.connectivity ?? "static-complete";
+  const canVerifyConnections = connectivity === "static-complete"
+    || connectivity === "static-partial";
   const stepOf = new Map<string, number>();
   plan.steps.forEach((s) => s.adds.forEach((id) => stepOf.set(id, s.n)));
 
@@ -148,25 +156,41 @@ export function reconcile(plan: Plan, world: World, step: number): Guidance {
 
     if (blind) {
       return { part, step: at, status: "not-yet" as PartStatus,
+               evidence: "unknown",
                detail: "Nothing to compare against yet." };
     }
+    if (entity && !canVerifyConnections) {
+      return {
+        part, step: at, status: "unverified", entity,
+        evidence: entity.terminalEvidence ?? "unknown",
+        detail: `${part.label} is present at ${entity.footprint}, but this workspace `
+          + "does not expose enough connectivity to verify its wiring.",
+      };
+    }
     if (entity && placedCorrectly(part, entity)) {
-      return { part, step: at, status: "placed", entity,
-               detail: `${part.label} is in ${entity.footprint}, which is right.` };
+      const evidence = entity.terminalEvidence ?? "unknown";
+      return { part, step: at, status: "placed", entity, evidence,
+               detail: evidence === "measured"
+                 ? `${part.label} is in ${entity.footprint}, which is right.`
+                 : `${part.label} is positioned at ${entity.footprint}, matching the plan; `
+                   + "its bare leads are not directly visible, so the electrical connection is not fully verified." };
     }
     if (entity) {
       return {
         part, step: at, status: "misplaced", entity,
+        evidence: entity.terminalEvidence ?? "unknown",
         detail: `${part.label} looks like it is in ${entity.footprint}, but the plan `
           + `puts it in ${whereItShouldBe(part)}.`,
       };
     }
     if (at > step) {
       return { part, step: at, status: "not-yet",
+               evidence: "unknown",
                detail: `${part.label} goes in at step ${at}.` };
     }
     return {
       part, step: at, status: "missing",
+      evidence: "unknown",
       detail: `${part.label} should be in ${whereItShouldBe(part)}, and I cannot see it.`,
     };
   });
@@ -204,35 +228,44 @@ export function reconcile(plan: Plan, world: World, step: number): Guidance {
  * another is worse than no dot at all.
  */
 function focusOf(plan: Plan, checks: PartCheck[], issues: Issue[],
-                 currentStep: number): { holes: string[]; why: string } {
-  const onBoard = (pins: string[]) => pins.filter((p) => netOf(p) !== null);
+                 currentStep: number): { targets: WorkspaceLocation[]; holes: string[]; why: string } {
+  const onBoard = (pins: string[]) => pins.filter(
+    (p) => intrinsicNode(legacyPinLocation(p)) !== null);
+  const result = (holes: string[], why: string) => ({
+    holes,
+    targets: holes.map(anchorLocation),
+    why,
+  });
 
   const fault = issues.find((i) => i.severity === "error");
   if (fault?.entities.length) {
     const c = checks.find((x) => x.entity && fault.entities.includes(x.entity.id));
-    if (c?.entity) return { holes: onBoard(c.entity.pins), why: fault.message };
+    if (c?.entity) return result(onBoard(c.entity.pins), fault.message);
   }
 
   const misplaced = checks.find((c) => c.status === "misplaced");
   // Point at where it SHOULD go, not where it is: the student can already see
   // where they put it.
   if (misplaced) {
-    return { holes: onBoard(misplaced.part.pins),
-             why: `where ${misplaced.part.label} belongs` };
+    return result(onBoard(misplaced.part.pins), `where ${misplaced.part.label} belongs`);
   }
 
   const missing = checks.find((c) => c.status === "missing");
   if (missing) {
-    return { holes: onBoard(missing.part.pins),
-             why: `where ${missing.part.label} goes` };
+    return result(onBoard(missing.part.pins), `where ${missing.part.label} goes`);
   }
 
   const step = plan.steps.find((s) => s.n === currentStep);
-  const adds = step?.adds.flatMap(
-    (id) => onBoard(plan.parts.find((p) => p.id === id)?.pins ?? [])) ?? [];
-  if (adds.length) return { holes: adds, why: step?.title ?? "the next step" };
+  const stepParts = step?.adds
+    .map((id) => plan.parts.find((p) => p.id === id))
+    .filter((p): p is Part => !!p) ?? [];
+  const adds = stepParts.flatMap((p) => onBoard(p.pins));
+  if (adds.length) {
+    const names = stepParts.map((p) => p.label).join(" and ");
+    return result(adds, `where the ${names} goes`);
+  }
 
-  return { holes: [], why: "" };
+  return result([], "");
 }
 
 function nextAction(plan: Plan, world: World, checks: PartCheck[], issues: Issue[],
@@ -250,6 +283,9 @@ function nextAction(plan: Plan, world: World, checks: PartCheck[], issues: Issue
 
   const misplaced = checks.find((c) => c.status === "misplaced");
   if (misplaced) return misplaced.detail;
+
+  const unverified = checks.find((c) => c.status === "unverified");
+  if (unverified) return unverified.detail;
 
   const missing = checks.filter((c) => c.status === "missing");
   if (missing.length) {
@@ -281,11 +317,13 @@ export function guidanceText(plan: Plan, world: World, g: Guidance): string {
 
   const misplaced = g.checks.filter((c) => c.status === "misplaced");
   const missing = g.checks.filter((c) => c.status === "missing");
+  const unverified = g.checks.filter((c) => c.status === "unverified");
 
   lines.push(`Against the plan "${plan.title}": ${g.progress.placed} of `
     + `${g.progress.expected} parts due so far are correctly placed.`);
   for (const c of misplaced) lines.push(`  wrong place: ${c.detail}`);
   for (const c of missing) lines.push(`  not on the board: ${c.detail}`);
+  for (const c of unverified) lines.push(`  present but not electrically verified: ${c.detail}`);
   if (g.extras.length) {
     lines.push(`  also on the board, not in the plan: `
       + g.extras.map((e) => `${e.label} at ${e.footprint}`).join("; "));

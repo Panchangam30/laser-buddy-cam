@@ -23,7 +23,11 @@ export function CameraPanel({ onCapture, busy, registerGrab }: {
         stream = s;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
-          setReady(true);
+          // Wait for actual video data, not just for the stream to be handed
+          // over. A camera that is granted but not yet producing frames left a
+          // black rectangle sitting there looking like a fault.
+          videoRef.current.addEventListener(
+            "loadeddata", () => setReady(true), { once: true });
         }
       })
       .catch((e) => setError(
@@ -58,7 +62,10 @@ export function CameraPanel({ onCapture, busy, registerGrab }: {
         <p className="camera-error">{error}</p>
       ) : (
         <>
-          <video ref={videoRef} autoPlay playsInline muted />
+          <div className="camera-frame" data-ready={ready}>
+            <video ref={videoRef} autoPlay playsInline muted />
+            {!ready && <p className="camera-waiting">Waiting for the camera</p>}
+          </div>
           <button className="capture" onClick={capture} disabled={!ready || busy}>
             {busy ? "Working out the circuit…" : "Scan the bench"}
           </button>

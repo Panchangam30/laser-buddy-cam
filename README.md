@@ -55,7 +55,8 @@ which holes", and it answers it by measurement rather than by asking a model:
 
 | File | What it does |
 | --- | --- |
-| `geometry.py` | The 830-point grid in millimetres. A port of `web/src/lib/breadboard.ts`; **the two must stay in step**. |
+| `web/src/workspaces/breadboard-830.v1.json` | The versioned source of truth for dimensions, anchors, intrinsic nodes, registration limits and laser check points. |
+| `geometry.py` / `breadboard.ts` | Python and TypeScript adapters over that shared workspace definition. |
 | `board.py` | Finds the board and solves a homography from image pixels to board millimetres. |
 | `detect.py` | Finds components on the straightened board and resolves each to the holes it covers. |
 | `track.py` | Stable ids across frames, so parts do not flicker and are not re-identified every frame. |
@@ -139,6 +140,27 @@ The voice assistant reads this through four tools — `check_progress`,
 `describe_world`, `where_is` and `point_at` — so it can say "your resistor is in
 column 25, it needs to be in 26" *and put the dot on column 26* instead of
 saying "check your wiring".
+
+### Projects and named goals
+
+Plans live in a browser-local project library backed by IndexedDB. The selected
+project and its current/manual step progress survive reloads; camera images are
+not stored. A successful bench scan creates a project, while a failed scan leaves
+the last good project alone.
+
+The Projects panel also accepts named goals. Goal plans come from a verified,
+deterministic catalog and include requirements, safety warnings, code and manual
+test steps. Unsupported goals are refused rather than receiving model-invented
+wiring. The initial catalog includes the button-controlled servo sweep.
+
+### Workspace capabilities
+
+World snapshots now identify their workspace profile and advertise location,
+connectivity and absolute-targeting capabilities. Locations and laser requests
+use scoped workspace references internally; legacy breadboard hole strings remain
+at the renderer boundary for compatibility. The only production locator today is
+the existing 830-point breadboard adapter. Perfboard and PCB support require
+registered profiles/fiducials and are deliberately not presented as available yet.
 
 ### Known limits
 

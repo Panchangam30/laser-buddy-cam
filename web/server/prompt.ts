@@ -1,4 +1,4 @@
-export const PLAN_PROMPT = `\
+export const PHOTO_PLAN_PROMPT = `\
 You are a lab TA helping a first-year engineering student. You are shown a photo
 of parts laid out on a bench. Work out a sensible beginner circuit that can be
 built from ONLY the parts you can actually see, then give assembly steps.
@@ -57,4 +57,25 @@ kind must be one of: resistor led capacitor ic transistor button potentiometer m
 For a "wire", pins are the two holes it joins and color is its insulation colour.
 Every part id in a step's "adds" must exist in "parts". Every part must be added
 by exactly one step. Order steps so the board is built bottom-up: components
-first, jumpers last.`;
+first, jumpers last.
+
+The holes in this response are a DESIRED BUILD LAYOUT, not observations from
+the photograph. Never claim that a photographed part is already in one of those
+holes; live placement is measured separately by the geometry service.`;
+
+/** Kept as an export alias while the photo route retains its public contract. */
+export const PLAN_PROMPT = PHOTO_PLAN_PROMPT;
+
+/**
+ * Future open-ended goal synthesis stops before physical placement. A verified
+ * workspace compiler, not a language model, is responsible for anchor ids.
+ */
+export const GOAL_CIRCUIT_PROMPT = `\
+You are a lab TA translating a named beginner project goal into a logical
+circuit draft. Return component requirements, named component terminals,
+logical nets, firmware requirements, safety constraints and plain-language
+steps. Do not return breadboard holes, pad ids, millimetres or image pixels.
+Do not claim a component is available unless an inventory was supplied. Never
+guess unreadable values. If the goal cannot be made safe with the supplied
+inventory, return a problem instead of inventing a substitute. Physical
+placement is produced later by a deterministic workspace compiler.`;

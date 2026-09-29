@@ -6,10 +6,22 @@ import type { Plan } from "./types";
  * A blinking LED is the canonical first breadboard circuit.
  */
 export const MOCK_PLAN: Plan = {
+  schemaVersion: 1,
+  id: "builtin-led-blink",
+  revision: 2,
   title: "LED blink circuit",
   summary:
     "An Arduino drives an LED through a current-limiting resistor. The classic " +
     "first circuit: it proves your board, your wiring and your upload all work.",
+  workspace: { profileId: "breadboard-830", profileVersion: 1 },
+  source: { kind: "builtin", templateId: "led-blink" },
+  requirements: [
+    { id: "breadboard", label: "830-point breadboard", count: 1, availability: "unknown" },
+    { id: "arduino", label: "Arduino Uno", count: 1, availability: "unknown" },
+    { id: "led", label: "Red 5 mm LED", count: 1, availability: "unknown" },
+    { id: "resistor", label: "220 ohm resistor", count: 1, availability: "unknown" },
+    { id: "jumpers", label: "Jumper wire", count: 3, availability: "unknown" },
+  ],
   detected: [
     { label: "Breadboard, 830 tie-point", count: 1, confidence: "high" },
     { label: "Arduino Uno", count: 1, confidence: "high" },
@@ -17,16 +29,25 @@ export const MOCK_PLAN: Plan = {
     { label: "Resistor (bands not legible)", count: 1, confidence: "low", unreadable: true },
     { label: "Jumper wire", count: 2, confidence: "high" },
   ],
+  warnings: [],
+  devices: [
+    {
+      id: "arduino", kind: "arduino-uno", label: "Arduino Uno",
+      color: "#0d7d8c", aliases: ["Arduino", "Uno"], visibleFromStep: 1,
+      placement: { side: "front", order: 0 },
+      ports: ["D13", "GND"].map((label) => ({ id: label.toLowerCase(), label })),
+    },
+  ],
   parts: [
     { id: "led1", kind: "led", label: "LED (red)", pins: ["E20", "E22"],
       color: "#ff3b30", polarised: true },
     { id: "r1", kind: "resistor", label: "Resistor 220R", pins: ["E22", "E26"],
       color: "#d9c08a", value: "220 ohm" },
-    { id: "w1", kind: "wire", label: "D13 to LED anode", pins: ["A20", "T+20"],
+    { id: "w1", kind: "wire", label: "D13 to LED anode", pins: ["A20", "EXT:Arduino D13"],
       color: "#2f7fff" },
     { id: "w2", kind: "wire", label: "Resistor to ground", pins: ["A26", "B-26"],
       color: "#1c1c1e" },
-    { id: "w3", kind: "wire", label: "Ground rail to GND", pins: ["B-10", "B-4"],
+    { id: "w3", kind: "wire", label: "Ground rail to GND", pins: ["B-10", "EXT:Arduino GND"],
       color: "#1c1c1e" },
   ],
   steps: [

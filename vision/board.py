@@ -30,10 +30,10 @@ RECT_W = int(round(g.BOARD_WIDTH * PX_PER_MM))
 RECT_H = int(round(g.BOARD_DEPTH * PX_PER_MM))
 
 #: A board seen at an angle foreshortens, so accept a wide aspect window.
-ASPECT_TOLERANCE = (2.1, 5.4)
+ASPECT_TOLERANCE = tuple(float(x) for x in g.PROFILE["registration"]["aspectTolerance"])
 
 #: Below this the "board" is more likely a bright patch of bench.
-MIN_AREA_FRACTION = 0.045
+MIN_AREA_FRACTION = float(g.PROFILE["registration"]["minimumAreaFraction"])
 
 
 @dataclass
@@ -49,6 +49,8 @@ class BoardPose:
     area_fraction: float
     confidence: str = "medium"
     note: str = ""
+    method: str = "outline-homography"
+    registration_validation: str = "outline-only"
 
     def to_board(self, pts: np.ndarray) -> np.ndarray:
         """Image pixels -> board millimetres. Accepts (N,2), returns (N,2)."""
@@ -72,6 +74,8 @@ class BoardPose:
             "coverage": round(self.area_fraction, 3),
             "confidence": self.confidence,
             "note": self.note,
+            "registrationMethod": self.method,
+            "registrationValidation": self.registration_validation,
             "widthMm": round(g.BOARD_WIDTH, 2),
             "depthMm": round(g.BOARD_DEPTH, 2),
         }
@@ -274,6 +278,8 @@ def find_board(frame: np.ndarray, flipped: bool = False) -> BoardPose | NoBoard:
         area_fraction=coverage,
         confidence=confidence,
         note=note,
+        method=f"{how}-homography",
+        registration_validation="outline-only",
     )
 
 
@@ -294,7 +300,7 @@ def hole_grid_mask(dilate_mm: float = 0.35) -> np.ndarray:
     return mask
 
 
-def printed_mask(width_mm: float = 1.6) -> np.ndarray:
+def printed_mask(width_mm: float | None = None) -> np.ndarray:
     """Mask of the printed red and blue rail stripes.
 
     These are saturated colour running the length of the board, which is exactly
@@ -302,6 +308,8 @@ def printed_mask(width_mm: float = 1.6) -> np.ndarray:
     distances from the rail holes, so they can be excluded by position.
     """
     mask = np.zeros((RECT_H, RECT_W), np.uint8)
+    if width_mm is None:
+        width_mm = float(g.PROFILE["railAppearance"]["stripeWidth"])
     half = width_mm / 2 * PX_PER_MM
     # Matches the stripe placement in web/src/three/Breadboard.tsx: just inboard
     # of each rail, offset by 0.78 of the hole pitch.
@@ -310,7 +318,8 @@ def printed_mask(width_mm: float = 1.6) -> np.ndarray:
         if xz is None:
             continue
         _x, z = xz
-        _px, py = board_to_rect(0.0, z + side * g.PITCH * 0.78)
+        offset = float(g.PROFILE["railAppearance"]["stripeOffsetPitch"])
+        _px, py = board_to_rect(0.0, z + side * g.PITCH * offset)
         cv2.rectangle(mask, (0, int(round(py - half))),
                       (RECT_W, int(round(py + half))), 255, -1)
     return mask

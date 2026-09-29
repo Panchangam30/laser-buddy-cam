@@ -24,6 +24,7 @@ import type { Part } from "../lib/types";
 export const STATUS_COLOR: Record<PartStatus | "extra" | "unknown", string> = {
   placed: "#3ddc84",
   misplaced: "#ff9f3b",
+  unverified: "#d6b65f",
   missing: "#ff6b5e",
   "not-yet": "#5a5d65",
   extra: "#7fa8ff",

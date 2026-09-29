@@ -33,7 +33,7 @@ import cv2
 import numpy as np
 
 from . import board as bd
-from . import detect, geometry as g, label, world
+from . import geometry as g, label, world, workspace as ws
 from .aim import Calibrator, find_dot
 from .laser import LaserLink, find_port
 from .track import Tracker
@@ -72,6 +72,7 @@ class VisionEngine:
         self.tracker = Tracker()
         self.laser = LaserLink()
         self.calibrator = Calibrator()
+        self.workspace_runtime = ws.BREADBOARD_RUNTIME
         self._frame_at = 0.0
         self._aimed_at: tuple[float, float] | None = None
         self._aimed_hole = ""
@@ -94,7 +95,7 @@ class VisionEngine:
             self._frames += 1
             self._frame = frame
             self._frame_at = time.time()
-            pose = bd.find_board(frame, flipped=self.flipped)
+            pose = self.workspace_runtime.locate(frame, flipped=self.flipped)
             self._pose = pose
 
             if isinstance(pose, bd.NoBoard):
@@ -105,9 +106,9 @@ class VisionEngine:
                 self._world = world.build(pose, self.tracker.live(), self._frames, self._errors[:])
                 return self._world.serialise()
 
-            rect = pose.rectify(frame)
+            rect = self.workspace_runtime.rectify(frame, pose)
             self._rect = rect
-            self.tracker.update(self._without_laser_dot(detect.find_blobs(rect)))
+            self.tracker.update(self._without_laser_dot(self.workspace_runtime.detect(rect)))
             self._world = world.build(pose, self.tracker.live(), self._frames, self._errors[:])
             snapshot = self._world.serialise()
             snapshot["orientation"] = {"flipped": self.flipped, "source": self.orientation_source}
@@ -149,7 +150,7 @@ class VisionEngine:
         return None
 
     def pose_of(self, frame):
-        return bd.find_board(frame, flipped=self.flipped)
+        return self.workspace_runtime.locate(frame, flipped=self.flipped)
 
     # ---------------------------------------------------------------- pointing
 
@@ -160,7 +161,7 @@ class VisionEngine:
         if problem:
             return {"ok": False, "error": problem}
         if not aimer.ready:
-            return {"ok": False, "error": "the laser has not been calibrated yet"}
+            return {"ok": False, "error": "The laser has not been calibrated yet."}
         if not aimer.covers(x, z):
             return {"ok": False, "error":
                     f"{hole or 'that spot'} is outside the area the calibration "
@@ -168,9 +169,9 @@ class VisionEngine:
 
         angles = aimer.angles_for(x, z)
         if angles is None:
-            return {"ok": False, "error": "no aim solution"}
+            return {"ok": False, "error": "No aim solution for that spot."}
         if not self.laser.move(*angles):
-            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+            return {"ok": False, "error": self.laser.error or "The head did not answer."}
         self.laser.set_laser(True)
         with self._lock:
             self._aimed_at = (x, z)
@@ -183,6 +184,15 @@ class VisionEngine:
         if xz is None:
             return {"ok": False, "error": f"{ref!r} is not a hole on this board"}
         return self.point_at(*xz, hole=ref.upper())
+
+    def point_at_location(self, target: dict) -> dict:
+        """Aim at a scoped workspace location without assuming every target is a hole."""
+        ref = target.get("ref") or {}
+        resolved = self.workspace_runtime.resolve(target)
+        if resolved is None:
+            return {"ok": False, "error": "That location is not targetable in the active workspace."}
+        label = str(ref.get("anchorId", "metric target"))
+        return self.point_at(*resolved, hole=label)
 
     #: Degrees per nudge. Sized for speech: "a bit" should be a visible change
     #: without being a lurch, and three of them should cross the working area.
@@ -210,7 +220,7 @@ class VisionEngine:
             return ""
         if self.laser.connect():
             return ""
-        return self.laser.error or "the laser is not connected"
+        return self.laser.error or "The laser is not connected."
 
     def move_to(self, pan: float | None = None, tilt: float | None = None) -> dict:
         """Absolute move. Either axis may be left alone."""
@@ -220,7 +230,7 @@ class VisionEngine:
         p = self.laser.pose.pan if pan is None else float(pan)
         t = self.laser.pose.tilt if tilt is None else float(tilt)
         if not self.laser.move(p, t):
-            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+            return {"ok": False, "error": self.laser.error or "The head did not answer."}
         return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
 
     def nudge(self, direction: str, amount: str = "small") -> dict:
@@ -236,7 +246,7 @@ class VisionEngine:
         ok = self.laser.move(self.laser.pose.pan + dp * step,
                              self.laser.pose.tilt + dt * step)
         if not ok:
-            return {"ok": False, "error": self.laser.error or "the head did not answer"}
+            return {"ok": False, "error": self.laser.error or "The head did not answer."}
         # Report when an axis is against its stop, so the assistant can say so
         # rather than repeating a move that will not do anything.
         from .laser import PAN_MAX, PAN_MIN, TILT_MAX, TILT_MIN
@@ -271,16 +281,20 @@ class VisionEngine:
 
     def start_calibration(self) -> dict:
         if not self.laser.connected:
-            return {"ok": False, "error": self.laser.error or "the laser is not connected"}
-        if self._frame is None:
+            return {"ok": False, "error": self.laser.error or "The laser is not connected."}
+        if self._frame is None or time.time() - self._frame_at > 3.0:
             return {"ok": False, "error":
-                    "no camera frames yet -- turn board tracking on first"}
-        if self.calibrator.running:
-            return {"ok": False, "error": "already calibrating"}
-        threading.Thread(
-            target=self.calibrator.run,
-            args=(self.laser, self.next_frame, self.pose_of),
-            daemon=True).start()
+                    "No recent camera frames. Turn on board tracking and keep it running."}
+        if not self.calibrator.claim():
+            return {"ok": False, "error": "Already calibrating."}
+        try:
+            threading.Thread(
+                target=self.calibrator.run,
+                args=(self.laser, self.next_frame, self.pose_of, True),
+                daemon=True).start()
+        except Exception:
+            self.calibrator.running = False
+            raise
         return {"ok": True}
 
     def _label_pass(self) -> None:
@@ -342,6 +356,7 @@ class VisionEngine:
                 "labelling": bool(self.labelling and self.api_key),
                 "openai": "configured" if self.api_key else "missing",
                 "orientation": {"flipped": self.flipped, "source": self.orientation_source},
+                "workspace": self.workspace_runtime.descriptor.serialise(self._pose),
                 "boardFound": not isinstance(self._pose, bd.NoBoard),
                 "pxPerMm": bd.PX_PER_MM,
             }
@@ -509,6 +524,9 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, {"ok": True, **engine.laser_status()})
 
             if self.path == "/vision/laser/point":
+                target = body.get("target")
+                if isinstance(target, dict):
+                    return self._json(200, engine.point_at_location(target))
                 hole = body.get("hole")
                 if isinstance(hole, str) and hole.strip():
                     return self._json(200, engine.point_at_hole(hole))

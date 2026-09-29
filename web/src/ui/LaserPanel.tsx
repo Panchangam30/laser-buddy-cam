@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  calibrate, cancelCalibration, laserConnect, laserOff, laserStatus, pointAt,
+  calibrate, cancelCalibration, laserConnect, laserOff, laserStatus, pointAtLocation,
   NO_LASER, type LaserStatus,
 } from "../lib/laser";
+import { isTargetable, locationLabel, type WorkspaceLocation } from "../lib/workspace";
 
 /**
  * Controls for the pan/tilt laser.
@@ -11,10 +12,18 @@ import {
  * not plugged in, plugged in but not calibrated, and ready to point. Calibration
  * is the step people skip, so until it has been done nothing else is offered.
  */
-export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
+export function LaserPanel({ targets, why, tracking, boardFound, worldFrame, onStartTracking }: {
+  targets: WorkspaceLocation[];
+  why: string;
+  tracking: boolean;
+  boardFound: boolean;
+  worldFrame: number;
+  onStartTracking: () => void;
+}) {
   const [s, setS] = useState<LaserStatus>(NO_LASER);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [calibrationQueuedAfter, setCalibrationQueuedAfter] = useState<number | null>(null);
 
   const cal = s.calibration;
 
@@ -48,11 +57,34 @@ export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
     }
   }
 
-  const target = focus[0];
+  // Recalibration needs a frame captured after tracking starts. A previous
+  // calibration left both a valid-looking world and a cached frame behind, so
+  // accepting either one made the button appear to do nothing: the calibration
+  // worker started, waited for a new frame that never came, then failed later.
+  useEffect(() => {
+    if (calibrationQueuedAfter === null || !tracking || !boardFound
+        || worldFrame <= calibrationQueuedAfter || busy) return;
+    setCalibrationQueuedAfter(null);
+    void run("calibrate", calibrate);
+  }, [calibrationQueuedAfter, tracking, boardFound, worldFrame, busy]);
+
+  function startCalibration() {
+    setErr("");
+    if (!tracking || !boardFound) {
+      setCalibrationQueuedAfter(worldFrame);
+      if (!tracking) onStartTracking();
+      return;
+    }
+    void run("calibrate", calibrate);
+  }
+
+  const target = targets[0];
+  const targetLabel = target ? locationLabel(target) : "";
+  const canTarget = Boolean(target && isTargetable(target));
 
   return (
     <section className="laser">
-      <h2>Laser pointer</h2>
+      <h3>Laser</h3>
 
       {!s.connected ? (
         <>
@@ -60,7 +92,7 @@ export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
             <button className="trackbtn" disabled={!!busy}
                     onClick={() => run("connect", laserConnect)}>
               <span className="dot" />
-              {busy === "connect" ? "Connecting…" : "Connect the laser"}
+              {busy === "connect" ? "Connecting…" : "Connect"}
             </button>
           </div>
           <p className="hint">
@@ -73,12 +105,14 @@ export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
         <>
           <div className="trackbar">
             <button className={`trackbtn ${s.laserOn ? "on" : ""}`}
-                    disabled={!!busy || !cal.ready || !target}
-                    onClick={() => run("point", () => pointAt(target))}
+                    disabled={!!busy || !cal.ready || !canTarget}
+                    onClick={() => run("point", () => pointAtLocation(target))}
                     title={!cal.ready ? "Calibrate first"
-                           : !target ? "Nothing to point at yet" : `Point at ${target}`}>
+                           : !target ? "Nothing to point at yet"
+                           : !canTarget ? "This workspace only supports regional guidance"
+                           : `Point at ${targetLabel}`}>
               <span className={`dot ${s.laserOn ? "live" : ""}`} />
-              {target ? `Point at ${target}` : "Nothing to point at"}
+              {target ? `Point at ${targetLabel}` : "Nothing to point at"}
             </button>
             {s.laserOn && (
               <button className="ghostbtn" onClick={() => run("off", laserOff)}>
@@ -87,7 +121,7 @@ export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
             )}
           </div>
 
-          {target && why && <p className="hint">That is {why}.</p>}
+          {target && why && <p className="hint">Pointing at {why}.</p>}
 
           {cal.running ? (
             <>
@@ -104,24 +138,29 @@ export function LaserPanel({ focus, why }: { focus: string[]; why: string }) {
             </>
           ) : (
             <div className="trackbar">
-              <button className="ghostbtn" disabled={!!busy}
-                      onClick={() => run("calibrate", calibrate)}>
-                {cal.ready ? "Recalibrate" : "Calibrate"}
+              <button className="ghostbtn"
+                      disabled={!!busy || calibrationQueuedAfter !== null}
+                      onClick={startCalibration}>
+                {calibrationQueuedAfter !== null ? "Finding board…"
+                  : busy === "calibrate" ? "Starting…"
+                  : cal.ready ? "Recalibrate" : "Calibrate"}
               </button>
               <span className="hint" style={{ margin: 0 }}>
-                {cal.ready
-                  ? `${cal.quality}${cal.rmsMm !== null ? ` (${cal.rmsMm.toFixed(1)} mm)` : ""}`
-                  : "not calibrated yet"}
+                {calibrationQueuedAfter !== null
+                  ? "Board tracking is starting automatically"
+                  : !tracking
+                    ? "Tracking will start automatically"
+                    : !boardFound
+                      ? "Keep the whole breadboard in view"
+                : cal.ready
+                  ? `${cal.quality}${cal.rmsMm !== null ? `, ${cal.rmsMm.toFixed(1)} mm off` : ""}`
+                  : "Not calibrated yet"}
               </span>
             </div>
           )}
 
-          {!cal.ready && !cal.running && (
-            <p className="hint">
-              Calibration sweeps the head across the board and watches where the
-              dot lands, so it learns the angles for every hole. Takes about a
-              minute, and needs board tracking on.
-            </p>
+          {!cal.ready && !cal.running && calibrationQueuedAfter === null && (
+            <p className="hint">Needs board tracking on. Takes about a minute.</p>
           )}
         </>
       )}

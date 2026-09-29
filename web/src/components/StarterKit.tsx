@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
-import { Html, RoundedBox, Text } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
+import { SURFACE_Y, snapToHole } from "../lib/breadboard";
+import {
+  BatteryModel, BreadboardModel, ButtonModel, BuzzerModel, CapacitorModel,
+  DisplayModel, IcModel, KnobModel, LedModel, MotorModel, RelayModel,
+  RemoteModel, ResistorModel, SensorModel, ServoModel, TransistorModel,
+  UnoModel, WireModel,
+} from "../three/kitModels";
 
 export type KitShape =
   | "board" | "breadboard" | "led" | "resistor" | "button" | "knob"
@@ -90,6 +97,36 @@ const PART_HELP: Record<string, string> = {
   "ir-remote": "Sends digitally encoded infrared light; an IR receiver module decodes each button press.",
 };
 
+/**
+ * Shapes with leads that go into the board.
+ *
+ * Everything else -- an Arduino, a 9 V battery, a remote -- sits beside the
+ * board rather than in it, and snapping those to the hole grid would be
+ * meaningless precision.
+ */
+const THROUGH_HOLE = new Set<KitShape>([
+  "led", "resistor", "capacitor", "transistor", "button", "knob", "ic",
+  "sensor", "buzzer", "wire",
+]);
+
+export function seatsInHoles(shape: KitShape): boolean {
+  return THROUGH_HOLE.has(shape);
+}
+
+/**
+ * Where a dragged part should actually come to rest.
+ *
+ * Through-hole parts snap to the grid and sit ON the board surface, because
+ * their legs are modelled going straight down and only reach a hole if both of
+ * those are true. Getting either wrong leaves the part hovering with its legs
+ * in the gaps, which is what it looked like before.
+ */
+export function seatPart(shape: KitShape, x: number, z: number): [number, number, number] {
+  if (!seatsInHoles(shape)) return [x, SURFACE_Y + 1.2, z];
+  const snapped = snapToHole(x, z);
+  return [snapped.x, SURFACE_Y, snapped.z];
+}
+
 export function partHelp(part: KitPartDefinition) {
   return PART_HELP[part.id] ?? "An electronic component used to build and test Arduino circuits.";
 }
@@ -141,7 +178,18 @@ export function ComponentsDrawer({ open, onToggle, count }: {
 }
 
 function PartPreview({ part }: { part: KitPartDefinition }) {
-  return <span className={`part-preview shape-${part.shape}`} style={{ "--part-color": part.color } as React.CSSProperties} />;
+  const [failed, setFailed] = useState(false);
+  // The CSS shape stays as the fallback: if the thumbnails have not been
+  // generated yet, the drawer still shows something part-shaped rather than a
+  // row of broken-image icons.
+  if (failed) {
+    return <span className={`part-preview shape-${part.shape}`}
+                 style={{ "--part-color": part.color } as React.CSSProperties} />;
+  }
+  return (
+    <img className="part-thumb" src={`/parts/${part.id}.png`} alt="" loading="lazy"
+         width={72} height={72} onError={() => setFailed(true)} />
+  );
 }
 
 export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
@@ -205,8 +253,10 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
           }
           if (!dragging) return;
           event.stopPropagation();
-          onMove(dragging, [Math.max(-78, Math.min(78, event.point.x)), 5.7,
-            Math.max(-48, Math.min(48, event.point.z))]);
+          const held = parts.find((part) => part.instanceId === dragging);
+          onMove(dragging, seatPart(held?.shape ?? "ic",
+            Math.max(-78, Math.min(78, event.point.x)),
+            Math.max(-48, Math.min(48, event.point.z))));
         }}
         onPointerUp={(event) => {
           if (wireDrag) {
@@ -311,40 +361,37 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
   </group>;
 }
 
+/**
+ * Dispatch a kit part to its detailed model.
+ *
+ * These used to be primitives built inline -- a sphere for every sensor, a
+ * rounded box for every module. They are now the same models the board view
+ * uses, so a part a student drags in looks like the part they are holding, and
+ * there is one place to improve a component rather than two that drift apart.
+ */
 function KitPartModel({ part, selected }: { part: KitPartDefinition; selected: boolean }) {
-  const material = <meshStandardMaterial color={part.color} roughness={0.48}
-    emissive={selected ? "#ffcc00" : "#000000"} emissiveIntensity={selected ? 0.32 : 0} />;
-  const pin = (x: number, z: number, key: string) => (
-    <mesh key={key} position={[x, -1.5, z]}><cylinderGeometry args={[0.32, 0.32, 4, 7]} />
-      <meshStandardMaterial color="#bfc4cc" metalness={0.8} roughness={0.25} /></mesh>
-  );
-
+  const props = { id: part.id, color: part.color, selected };
   switch (part.shape) {
-    case "board": return <group scale={0.55}><RoundedBox args={[68, 3, 53]} radius={2} smoothness={3}>{material}</RoundedBox>
-      <mesh position={[-27, 4, 10]}><boxGeometry args={[14, 7, 13]} /><meshStandardMaterial color="#c4c8ca" metalness={0.75} /></mesh>
-      <mesh position={[27, 4, 17]}><cylinderGeometry args={[6, 6, 10, 22]} /><meshStandardMaterial color="#17191d" /></mesh>
-      <mesh position={[5, 3.2, 0]}><boxGeometry args={[16, 4, 8]} /><meshStandardMaterial color="#17191d" /></mesh>
-      <mesh position={[-8, 3, 13]}><boxGeometry args={[5, 2.5, 9]} /><meshStandardMaterial color="#c6cbd0" metalness={0.7} /></mesh>
-      <Text position={[3, 2, -14]} rotation={[-Math.PI / 2, 0, 0]} fontSize={5} color="#e9ffff">UNO</Text>
-      {[...Array(14)].map((_, i) => pin(-28 + i * 4.3, -24, `a${i}`))}
-      {[...Array(14)].map((_, i) => pin(-28 + i * 4.3, 24, `b${i}`))}</group>;
-    case "breadboard": return <group><RoundedBox args={[42, 3, 18]} radius={1.5} smoothness={2}>{material}</RoundedBox>
-      {[...Array(15)].flatMap((_, col) => [-5, -2, 2, 5].map((z) => <mesh key={`${col}-${z}`} position={[-18 + col * 2.55, 1.6, z]}><boxGeometry args={[.8,.6,.8]} /><meshStandardMaterial color="#4b5563" /></mesh>))}</group>;
-    case "led": return <group>{pin(-1, 0, "a")}{pin(1, 0, "b")}<mesh position={[0, 3, 0]}>{material}<sphereGeometry args={[2.4, 18, 12, 0, Math.PI * 2, 0, Math.PI / 1.6]} /></mesh></group>;
-    case "resistor": return <group rotation={[0, 0, Math.PI / 2]}>{pin(0, -5, "a")}{pin(0, 5, "b")}<mesh><capsuleGeometry args={[1.25, 5, 8, 14]} />{material}</mesh>{[-1.5, 0, 1.5].map((y, i) => <mesh key={y} position={[0,y,0]}><cylinderGeometry args={[1.28,1.28,.5,16]} /><meshStandardMaterial color={["#8b4513", part.id === "resistor-10k" ? "#111" : "#ef4444", "#7c3aed"][i]} /></mesh>)}</group>;
-    case "button": return <group><RoundedBox args={[7, 3, 7]} radius={0.7}>{material}</RoundedBox><mesh position={[0, 2.3, 0]}><cylinderGeometry args={[2, 2, 1.8, 16]} /><meshStandardMaterial color="#111827" /></mesh></group>;
-    case "knob": return <group>{[-2.5, 0, 2.5].map((x, i) => pin(x, 0, `pot-${i}`))}<mesh><boxGeometry args={[8, 3, 8]} />{material}</mesh><mesh position={[0, 3, 0]}><cylinderGeometry args={[2.2, 2.2, 4, 18]} /><meshStandardMaterial color="#cbd5e1" metalness={.6} /></mesh><mesh position={[0,5.1,1]}><boxGeometry args={[.45,.2,1.5]} /><meshBasicMaterial color="#38404a" /></mesh></group>;
-    case "motor": return <group rotation={[0, 0, Math.PI / 2]}><mesh><cylinderGeometry args={[5, 5, 12, 20]} />{material}</mesh><mesh position={[0,7,0]}><cylinderGeometry args={[1,1,5,12]} /><meshStandardMaterial color="#d6d9dd" metalness={0.9} /></mesh><mesh position={[0,-6.2,0]}><cylinderGeometry args={[4.2,4.2,.7,20]} /><meshStandardMaterial color="#3d4249" /></mesh>{[-2,2].map((z) => <mesh key={z} position={[0,-7,z]}><boxGeometry args={[.5,2,.9]} /><meshStandardMaterial color="#c58a39" metalness={.7} /></mesh>)}</group>;
-    case "servo": return <group><RoundedBox args={[13, 8, 7]} radius={1}>{material}</RoundedBox><mesh position={[3,5,0]}><cylinderGeometry args={[2.2,2.2,2,18]} /><meshStandardMaterial color="#f8fafc" /></mesh><mesh position={[3,6.3,0]}><boxGeometry args={[12,.7,1.5]} /><meshStandardMaterial color="#f4f5f6" /></mesh>{[-2,0,2].map((x) => <mesh key={x} position={[x-4,-5,0]}><boxGeometry args={[.45,4,.45]} /><meshStandardMaterial color={["#6b2a22","#c44b3f","#d49b35"][x/2+1]} /></mesh>)}</group>;
-    case "display": return <group><RoundedBox args={[22, 3, 11]} radius={1}>{material}</RoundedBox><mesh position={[0, 1.7, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[17, 7]} /><meshBasicMaterial color={part.id === "lcd-1602" ? "#123e47" : "#300607"} /></mesh><Text position={[0,1.8,0]} rotation={[-Math.PI/2,0,0]} fontSize={part.id === "lcd-1602" ? 2 : 5} color={part.id === "lcd-1602" ? "#9fe870" : "#ef4444"}>{part.id === "lcd-1602" ? "HELLO, ARDUINO" : "8"}</Text></group>;
-    case "battery": return <group><RoundedBox args={[13, 22, 8]} radius={1.5}>{material}</RoundedBox><mesh position={[-3,12,0]}><cylinderGeometry args={[1,1,2,12]} /><meshStandardMaterial color="#d1d5db" metalness={.8} /></mesh><mesh position={[3,12,0]}><cylinderGeometry args={[1.7,1.7,1.4,16]} /><meshStandardMaterial color="#d1d5db" metalness={.8} /></mesh><Text position={[0,4.1,0]} rotation={[-Math.PI/2,0,0]} fontSize={2.2} color="#f5f5f5">9V</Text></group>;
-    case "buzzer": return <group><mesh><cylinderGeometry args={[4, 4, 5, 24]} />{material}</mesh><mesh position={[0,2.6,0]}><cylinderGeometry args={[1,1,.3,16]} /><meshBasicMaterial color="#050505" /></mesh></group>;
-    case "capacitor": return <group>{pin(-1.2, 0, "a")}{pin(1.2, 0, "b")}<mesh position={[0, 3, 0]}><cylinderGeometry args={[2.7, 2.7, 6, 20]} />{material}</mesh></group>;
-    case "transistor": return <group>{[-2, 0, 2].map((x, i) => pin(x, 0, String(i)))}<mesh position={[0, 2.5, 0]}><cylinderGeometry args={[2.8, 2.8, 5, 16, 1, false, 0, Math.PI * 1.65]} />{material}</mesh></group>;
-    case "sensor": return part.id === "ultrasonic" ? <group><RoundedBox args={[14, 2.5, 8]} radius={0.8}>{material}</RoundedBox>{[-4,4].map((x) => <mesh key={x} position={[x,3,0]}><cylinderGeometry args={[2.7,2.7,3,22]} /><meshStandardMaterial color="#d8dde3" metalness={.65} /></mesh>)}</group> : <group>{[-1.2,1.2].map((x) => pin(x,0,String(x)))}<mesh position={[0,2.5,0]}><sphereGeometry args={[2.4,18,12]} />{material}</mesh>{part.id === "photoresistor" && <mesh position={[0,4.7,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[1.5,18]} /><meshBasicMaterial color="#f6c453" /></mesh>}</group>;
-    case "remote": return <group><RoundedBox args={[11, 2.5, 22]} radius={2}>{material}</RoundedBox>{[...Array(9)].map((_, i) => <mesh key={i} position={[-3 + (i % 3) * 3, 1.5, -4 + Math.floor(i / 3) * 4]}><sphereGeometry args={[0.8, 10, 8]} /><meshStandardMaterial color={i < 3 ? "#ef4444" : "#94a3b8"} /></mesh>)}</group>;
-    case "relay": return <group><RoundedBox args={[13,9,10]} radius={1}>{material}</RoundedBox><Text position={[0,4.6,0]} rotation={[-Math.PI/2,0,0]} fontSize={1.4} color="#e7f2ff">5V RELAY</Text>{[-4,0,4].map((x) => pin(x,-5.5,`r-${x}`))}</group>;
-    case "ic": return <group><RoundedBox args={[15,3,7]} radius={1}>{material}</RoundedBox>{[-1,1].flatMap((side) => [...Array(7)].map((_, i) => pin(-6 + i * 2, side * 4.2, `${side}-${i}`)))}<mesh position={[-7,1.6,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.8,14]} /><meshBasicMaterial color="#8c9098" /></mesh><Text position={[0,1.65,0]} rotation={[-Math.PI/2,0,0]} fontSize={1.1} color="#a9adb5">{part.id === "motor-driver" ? "L293D" : "74HC595"}</Text></group>;
-    default: return <RoundedBox args={[10, 5, 8]} radius={1}>{material}</RoundedBox>;
+    case "board":       return <UnoModel {...props} />;
+    case "breadboard":  return <BreadboardModel {...props} />;
+    case "led":         return <LedModel {...props} />;
+    case "resistor":    return <ResistorModel {...props} />;
+    case "button":      return <ButtonModel {...props} />;
+    case "knob":        return <KnobModel {...props} />;
+    case "sensor":      return <SensorModel {...props} />;
+    case "motor":       return <MotorModel {...props} />;
+    case "servo":       return <ServoModel {...props} />;
+    case "display":     return <DisplayModel {...props} />;
+    case "battery":     return <BatteryModel {...props} />;
+    case "buzzer":      return <BuzzerModel {...props} />;
+    case "relay":       return <RelayModel {...props} />;
+    case "ic":          return <IcModel {...props} />;
+    case "capacitor":   return <CapacitorModel {...props} />;
+    case "transistor":  return <TransistorModel {...props} />;
+    case "remote":      return <RemoteModel {...props} />;
+    // On the canvas a placed wire is drawn by JumperWire, which needs both of
+    // its endpoints; this is only reached for a loose one.
+    case "wire":        return <WireModel {...props} />;
+    default:            return <IcModel {...props} />;
   }
 }

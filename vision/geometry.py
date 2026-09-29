@@ -1,10 +1,8 @@
-"""Breadboard grid geometry, in millimetres.
+"""Breadboard grid geometry, loaded from the shared workspace definition.
 
-This is a deliberate port of web/src/lib/breadboard.ts. The two files MUST agree:
-the Python side decides which hole a detected blob sits in, the TypeScript side
-decides where to draw it, and a disagreement between them shows up as parts
-floating one row off in the 3D view. If you change a constant here, change it
-there too.
+Python and TypeScript consume the same versioned JSON profile. The Python side
+decides which anchor a detected blob sits in and the TypeScript side renders it;
+there is no second handwritten set of dimensions to keep in sync.
 
 Coordinate frame: millimetres. X runs along the columns, Z across the rows, Y up
 out of the board. The origin is the centre of the board's plastic outline.
@@ -13,42 +11,43 @@ out of the board. The origin is the centre of the board's plastic outline.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 
-PITCH = 2.54          # 0.1 inch, the universal hole spacing
-COLUMNS = 63          # full-size 830-tie-point board
-CHANNEL = 7.62        # 0.3 inch gutter between the E and F rows
+_DEFINITION_PATH = (Path(__file__).resolve().parents[1] / "web" / "src" /
+                    "workspaces" / "breadboard-830.v1.json")
+with _DEFINITION_PATH.open(encoding="utf-8") as _fh:
+    PROFILE = json.load(_fh)
 
-ROWS = ("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
-RAILS = ("T+", "T-", "B+", "B-")
+PROFILE_ID = str(PROFILE["id"])
+PROFILE_VERSION = int(PROFILE["version"])
+PITCH = float(PROFILE["columns"]["pitch"])
+COLUMNS = int(PROFILE["columns"]["count"])
+X0 = float(PROFILE["columns"]["firstX"])
+
+_LINES = {line["id"]: line for line in PROFILE["lines"]}
+ROWS = tuple(line["id"] for line in PROFILE["lines"] if line["kind"] == "terminal")
+RAILS = tuple(line["id"] for line in PROFILE["lines"] if line["kind"] == "rail")
+_ABS_Z = {name: float(line["z"]) for name, line in _LINES.items()}
+Z0 = _ABS_Z["A"]
+CHANNEL = _ABS_Z["F"] - _ABS_Z["E"]
 
 
 def row_offset(row: str) -> float:
     """Z offset of a terminal row from row A."""
-    i = ROWS.index(row)
-    # Rows F-J sit past the centre channel, so they gain the channel width
-    # instead of another pitch step.
-    return i * PITCH if i <= 4 else 4 * PITCH + CHANNEL + (i - 5) * PITCH
+    if row not in ROWS:
+        raise ValueError(f"unknown terminal row {row!r}")
+    return _ABS_Z[row] - Z0
 
-
-LAST_ROW_Z = row_offset("J")
-RAIL_GAP = PITCH * 2
 
 RAIL_Z = {
-    "B-": -RAIL_GAP - PITCH,
-    "B+": -RAIL_GAP,
-    "T+": LAST_ROW_Z + RAIL_GAP,
-    "T-": LAST_ROW_Z + RAIL_GAP + PITCH,
+    rail: _ABS_Z[rail] - Z0 for rail in RAILS
 }
 
-MARGIN = PITCH        # plastic extends this far past the outermost holes
-
-BOARD_WIDTH = (COLUMNS - 1) * PITCH + MARGIN * 2          # 162.56 mm
-BOARD_DEPTH = RAIL_Z["T-"] - RAIL_Z["B-"] + MARGIN * 2    # 48.26 mm
+BOARD_WIDTH = float(PROFILE["dimensions"]["width"])
+BOARD_DEPTH = float(PROFILE["dimensions"]["depth"])
+BOARD_HEIGHT = float(PROFILE["dimensions"]["height"])
 BOARD_ASPECT = BOARD_WIDTH / BOARD_DEPTH                  # ~3.37
-
-# Centre the grid on the origin, exactly as breadboard.ts does.
-X0 = -((COLUMNS - 1) * PITCH) / 2
-Z0 = -(RAIL_Z["B-"] + RAIL_Z["T-"]) / 2
 
 #: Every addressable Z line, paired with its identifier, nearest-first lookups.
 _Z_LINES: list[tuple[str, float]] = (
@@ -113,10 +112,8 @@ def net_of(ref: str) -> str | None:
     if parsed is None:
         return None
     line, column = parsed
-    if line in RAIL_Z:
-        return f"rail:{line}"          # rails run the full length of the board
-    bank = "low" if ROWS.index(line) <= 4 else "high"
-    return f"col:{column}:{bank}"
+    group = str(_LINES[line]["nodeGroup"])
+    return group if line in RAIL_Z else f"col:{column}:{group}"
 
 
 def all_holes() -> list[tuple[str, float, float]]:
@@ -128,7 +125,7 @@ def all_holes() -> list[tuple[str, float, float]]:
             out.append((f"{r}{c}", x, z))
         # Real boards break the rails into groups of five; skipping the sixth
         # hole of each group reproduces that without faking it.
-        if c % 6 != 0:
+        if c % int(PROFILE["railAppearance"]["missingEvery"]) != 0:
             for rail in RAILS:
                 x, z = hole_xz(f"{rail}{c}")  # type: ignore[misc]
                 out.append((f"{rail}{c}", x, z))

@@ -4,7 +4,11 @@ const chromePath = process.env.PLAYWRIGHT_CHROME_PATH;
 
 export default defineConfig({
   testDir: "./tests",
-  fullyParallel: true,
+  // Each workbench page owns a WebGL scene. Running every scene-heavy test at
+  // once starves software-rendered CI browsers and makes ordinary button clicks
+  // time out; files may still run in parallel, but tests within a file are kept
+  // in order.
+  fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: "line",

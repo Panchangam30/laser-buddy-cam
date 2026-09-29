@@ -1,4 +1,5 @@
 import type { Plan } from "./types";
+import { normalizePlan } from "./plans";
 
 export async function requestPlan(imageDataUrl: string): Promise<Plan> {
   const r = await fetch("/api/plan", {
@@ -8,7 +9,18 @@ export async function requestPlan(imageDataUrl: string): Promise<Plan> {
   });
   const body = await r.json();
   if (!r.ok) throw new Error(body.detail || body.error || `HTTP ${r.status}`);
-  return body as Plan;
+  return normalizePlan(body, { kind: "photo", generatedAt: new Date().toISOString() });
+}
+
+export async function requestGoalPlan(goal: string): Promise<Plan> {
+  const r = await fetch("/api/plan/goal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ goal }),
+  });
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.detail || body.error || `HTTP ${r.status}`);
+  return normalizePlan(body);
 }
 
 /** Narrate a step. Silently does nothing if TTS isn't configured. */

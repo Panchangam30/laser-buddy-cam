@@ -195,6 +195,8 @@ class Aimer:
         try:
             with open(path, "w") as fh:
                 json.dump({
+                    "workspaceProfileId": g.PROFILE_ID,
+                    "workspaceProfileVersion": g.PROFILE_VERSION,
                     "panCoef": self.pan_coef, "tiltCoef": self.tilt_coef,
                     "rmsMm": self.rms_mm, "checked": self.checked, "at": self.at,
                     "samples": [[s.pan, s.tilt, s.x, s.z] for s in self.samples],
@@ -209,6 +211,11 @@ class Aimer:
                 d = json.load(fh)
         except (OSError, json.JSONDecodeError):
             return cls()
+        saved_profile = d.get("workspaceProfileId")
+        saved_version = d.get("workspaceProfileVersion")
+        if ((saved_profile is not None and saved_profile != g.PROFILE_ID)
+                or (saved_version is not None and int(saved_version) != g.PROFILE_VERSION)):
+            return cls()
         a = cls(
             samples=[Sample(*row) for row in d.get("samples", [])],
             pan_coef=d.get("panCoef"), tilt_coef=d.get("tiltCoef"),
@@ -220,6 +227,8 @@ class Aimer:
     def status(self) -> dict:
         return {
             "ready": self.ready,
+            "workspaceProfileId": g.PROFILE_ID,
+            "workspaceProfileVersion": g.PROFILE_VERSION,
             "samples": len(self.samples),
             "rmsMm": round(self.rms_mm, 2) if self.rms_mm is not None else None,
             "checked": self.checked,
@@ -230,14 +239,17 @@ class Aimer:
     def quality(self) -> str:
         """What the accuracy means in the only unit that matters here: holes."""
         if not self.ready:
-            return "not calibrated"
+            return "Not calibrated"
         if self.rms_mm is None:
-            return "calibrated, accuracy unmeasured"
-        if self.rms_mm <= g.PITCH / 2:
-            return "good -- lands within the right hole"
-        if self.rms_mm <= g.PITCH * 1.5:
-            return "usable -- may be a hole out"
-        return "poor -- recalibrate, or the head has moved"
+            return "Calibrated, accuracy not measured"
+        # Worded for the panel, not for a log: whoever reads this wants to know
+        # whether they can trust the dot, in holes rather than millimetres.
+        tolerance = float(g.PROFILE["laser"]["anchorTolerance"])
+        if self.rms_mm <= tolerance:
+            return "Lands on the requested anchor"
+        if self.rms_mm <= tolerance * 3:
+            return "Can be an anchor out"
+        return "Needs recalibrating"
 
 
 class Calibrator:
@@ -357,16 +369,23 @@ class Calibrator:
 
     # ---------------------------------------------------------------------- run
 
-    def run(self, link, frames, pose_of) -> None:
-        """Calibrate. `frames` returns a fresh frame, `pose_of` locates the board."""
+    def claim(self) -> bool:
+        """Reserve one calibration run before its worker thread is scheduled."""
         with self._lock:
             if self.running:
-                return
+                return False
             self.running = True
+            self.error = ""
+            self.progress = "starting calibration"
+            self.done = 0
+            self.total = 0
+            return True
+
+    def run(self, link, frames, pose_of, claimed: bool = False) -> None:
+        """Calibrate. `frames` returns a fresh frame, `pose_of` locates the board."""
+        if not claimed and not self.claim():
+            return
         self._cancel.clear()
-        self.error = ""
-        self.done = 0
-        self.total = 0
         self._frames = frames
         self._pose_of = pose_of
         samples: list[Sample] = []
@@ -380,11 +399,11 @@ class Calibrator:
             link.set_laser(False)
             self._ref = frames()
             if self._ref is None:
-                raise RuntimeError("no camera frames -- turn board tracking on first")
+                raise RuntimeError("No camera frames yet. Turn on board tracking first.")
             self._ref_pose = pose_of(self._ref)
             if not isinstance(self._ref_pose, bd.BoardPose):
-                raise RuntimeError("cannot see the breadboard -- point the camera at "
-                                   "it and wait for it to be found")
+                raise RuntimeError("Cannot see the breadboard. Point the camera at it "
+                                   "and wait for it to be found.")
 
             link.set_laser(True)
 
@@ -399,8 +418,8 @@ class Calibrator:
 
             J = self._jacobian(link, pan0, tilt0, x0, z0)
             if J is None:
-                raise RuntimeError("the dot did not move predictably -- check that "
-                                   "both servos are free and powered")
+                raise RuntimeError("The dot did not move predictably. Check that both "
+                                   "servos are free and powered.")
             Jinv = np.linalg.inv(J)          # millimetres -> degrees
 
             # Grid over the board, aimed using the linear estimate. Inset from
@@ -471,4 +490,4 @@ def _on_board(x: float, z: float, margin: float = 2.0) -> bool:
 
 #: Holes used to check the fit. Spread to the corners and the middle, because a
 #: fit that is good in the centre and wrong at the ends is the usual failure.
-_CHECK_HOLES = ["E8", "E32", "E56", "A8", "A56", "J8", "J32", "J56", "E32"]
+_CHECK_HOLES = list(g.PROFILE["laser"]["verificationAnchors"])

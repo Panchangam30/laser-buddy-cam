@@ -1,363 +1,625 @@
+/* ==========================================================================
+   Bench Assembly
+
+   The 3D board is the only bright object on screen; everything else is the
+   matte chassis around it, the way a bench instrument surrounds its work
+   surface. Status colours are sampled from the board's own printed rails, so
+   the interface and the object it describes share materials.
+   ========================================================================== */
+
 :root {
-  --bg: #0c0d10;
-  --panel: #14161a;
-  --line: #24262c;
-  --text: #e8e8ea;
-  --muted: #8e9099;
-  --accent: #ffcc00;
-  --warn: #ff9f3b;
-  --low: #ff6b5e;
-  font-family: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  /* Graphite housing, layered. Not a tinted near-black: the layering is what
+     gives the panel depth, so nothing needs a drop shadow to sit forward. */
+  --chassis:   #16181b;
+  --panel:     #1c1f23;
+  --raised:    #23272c;
+  --rule:      #2b2f35;
+
+  --ink:       #eceef0;
+  --ink-dim:   #969ca4;
+  --ink-faint: #828891;
+
+  /* The one loud colour. Spent only on what to do next. */
+  --signal:     #e8b33a;
+  --signal-ink: #1a1403;
+
+  /* From the board's printed rails -- see RailStripes in three/Breadboard.tsx.
+     The rail colours are true to the object, which makes them too dark to read
+     as text on this chassis, so error copy uses a lifted version and the true
+     colour is kept for dots, rules and borders. */
+  --rail-red:  #d4453b;
+  --rail-red-ink: #e8675c;
+  --rail-blue: #4a80e0;
+  --good:      #4fa97a;
+  --warn:      #e0913c;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  /* Measured values only -- hole references, millimetres, degrees, counts.
+     These are instrument readings and want aligned digits. Never for labels. */
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Aliases, so rules elsewhere that still use the old names keep working. */
+  --bg: var(--chassis);
+  --line: var(--rule);
+  --text: var(--ink);
+  --muted: var(--ink-dim);
+  --accent: var(--signal);
+  --low: var(--rail-red);
+
+  font-family: var(--sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--text); }
+body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-height: 1.55; }
 
-.app { display: grid; grid-template-columns: 330px 1fr; height: 100vh; }
+:where(button, input, select, textarea) { font: inherit; }
+:where(button) { cursor: pointer; }
+
+/* One focus treatment for the whole app rather than one per component. */
+:where(button, a, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--signal); outline-offset: 2px; border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.num, .progress, .detected .count, .step .n, .component-count, .instruction .tally {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-feature-settings: "zero" 1;
+}
+
+/* --- shell ---------------------------------------------------------------- */
+
+.app { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
 
 .panel {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  overflow-y: auto;
-  padding: 22px 20px 40px;
+  background: var(--panel); border-right: 1px solid var(--rule);
+  overflow-y: auto; padding: 20px 20px 48px;
+  scrollbar-width: thin; scrollbar-color: var(--raised) transparent;
 }
-.panel h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -0.01em; }
+.panel .build { padding-bottom: 6px; }
+.panel h1 {
+  font-size: 19px; font-weight: 600; letter-spacing: -.015em; line-height: 1.3;
+  margin: 0 0 7px;
+}
+/* The three-line summary said what the circuit was for; the counts say what is
+   in front of you, which is what you check as you work. */
+.meta {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  margin: 0; font-size: 12.5px; color: var(--ink-dim);
+}
+.meta span { display: inline-flex; align-items: baseline; gap: 4px; }
+.meta b { font-weight: 500; color: var(--ink); }
+.meta i { width: 2px; height: 2px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+.tag {
+  color: var(--ink-faint); border: 1px solid var(--rule);
+  border-radius: var(--r-pill); padding: 1px 9px; font-size: 11px;
+}
+
+/* --- devices -------------------------------------------------------------- */
+
+.devices h2 { padding-top: 20px; margin: 0; }
+.devices { padding-top: 20px; }
+.grouptoggle {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: none; border: 0; padding: 0 0 4px; color: var(--ink);
+  font-size: 13px; font-weight: 600;
+}
+.chev { color: var(--ink-faint); font-size: 15px; line-height: 1; }
+.grouptoggle:hover .chev { color: var(--ink); }
+
+/* Each device is a card, so the four of them read as one set of tools rather
+   than as four sections competing with the build. */
+.devicelist { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.devicelist > * { margin: 0; }
+.camera, .tracker, .laser, .device {
+  background: var(--chassis); border: 1px solid var(--rule);
+  border-radius: var(--r-lg); padding: 12px;
+}
+.devicelist h3 {
+  margin: 0 0 9px; font-size: 12.5px; font-weight: 600; color: var(--ink-dim);
+}
+.devicelist .hint { margin: 7px 0 0; font-size: 12px; }
+.devicelist .trackbar { margin-bottom: 0; }
+.devicelist .trackbar + .trackbar { margin-top: 7px; }
+.devicelist .voicebar { margin-top: 0; }
+/* Headings sit on the rule that divides their group. Sentence case at body
+   size: the tracked-out capitals this replaced shouted every group at equal
+   volume, which is the opposite of a hierarchy. */
 .panel h2 {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--muted); margin: 26px 0 10px; font-weight: 600;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  letter-spacing: 0; text-transform: none;
+  margin: 0 0 11px; padding-top: 20px; border-top: 1px solid var(--rule);
 }
-.summary { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
+.summary { font-size: 13px; line-height: 1.6; color: var(--ink-dim); margin: 0; }
+
+/* --- parts list and steps ------------------------------------------------- */
 
 .detected { list-style: none; padding: 0; margin: 0; }
 .detected li {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px;
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 0; font-size: 13px; border-bottom: 1px solid var(--rule);
 }
-.detected .count { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 22px; }
+.detected li:last-child { border-bottom: 0; }
+.detected .count { color: var(--ink-faint); min-width: 26px; font-size: 12px; }
 .detected .label { flex: 1; }
-.detected li.low .label { color: var(--low); }
 .detected .flag {
-  background: var(--low); color: #1a0d0b; border-radius: 4px;
-  padding: 0 5px; font-size: 11px; font-weight: 700;
+  color: var(--rail-red-ink); border: 1px solid currentColor; border-radius: var(--r-sm);
+  padding: 1px 6px; font-size: 11px;
 }
 
-.steps { display: flex; flex-direction: column; gap: 4px; }
+.steps { display: flex; flex-direction: column; }
 .step {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  background: transparent; border: 1px solid transparent; border-radius: 8px;
-  color: var(--text); padding: 9px 10px; cursor: pointer; text-align: left;
-  font-size: 13px; font-family: inherit;
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  background: transparent; border: 0;
+  color: var(--ink-dim); padding: 10px 12px; text-align: left; font-size: 13px;
+  border-radius: var(--r-md);
+  transition: color .12s ease, background .12s ease;
 }
-.step:hover { background: #1b1e24; }
-.step .n {
-  width: 21px; height: 21px; border-radius: 50%; flex: none;
-  display: grid; place-items: center; font-size: 11px;
-  background: #24262c; color: var(--muted); font-variant-numeric: tabular-nums;
+.step:hover { background: var(--raised); color: var(--ink); }
+.step .n { width: 20px; flex: none; font-size: 11.5px; color: var(--ink-faint); text-align: right; }
+.step .t { flex: 1; }
+.step.done .n { color: var(--good); }
+/* A rule down the left edge rather than a filled block: it marks position
+   without competing with the instruction card out on the stage. */
+.step.active { background: var(--raised); color: var(--ink); font-weight: 500; }
+/* A filled dot rather than a rule down the edge: inside a rounded row a hard
+   left edge fights the corner it sits in. */
+.step.active .n::after {
+  content: ""; position: absolute; left: -9px; top: 50%;
+  width: 4px; height: 4px; margin-top: -2px; border-radius: 50%;
+  background: var(--signal);
 }
-.step.done .n { background: #2c4a36; color: #7fd6a0; }
-.step.active { background: #1f2229; border-color: var(--accent); }
-.step.active .n { background: var(--accent); color: #1a1600; font-weight: 700; }
+.step .n { position: relative; }
+.step.active .n { color: var(--signal); }
 
-.stage { position: relative; }
-.stage canvas { display: block; }
+/* --- camera and messages -------------------------------------------------- */
 
-.instruction {
-  position: absolute; left: 24px; right: 24px; bottom: 82px;
-  background: rgba(16,18,22,0.92); backdrop-filter: blur(10px);
-  border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
-  max-width: 620px;
+/* The preview was a large black rectangle until a camera appeared, which read
+   as something broken rather than as something waiting. */
+.camera-frame {
+  position: relative; border-radius: var(--r-md); overflow: hidden;
+  border: 1px solid var(--rule); background: var(--panel); height: 104px;
 }
-.instruction strong { font-size: 12px; color: var(--accent); letter-spacing: 0.02em; }
-.instruction p { margin: 7px 0 0; font-size: 14px; line-height: 1.55; }
-.instruction .warn { color: var(--warn); font-size: 13px; }
-
-.controls {
-  position: absolute; left: 24px; bottom: 22px;
-  display: flex; align-items: center; gap: 10px;
+.camera-frame video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0; transition: opacity .3s ease;
 }
-.controls button {
-  background: #1b1e24; border: 1px solid var(--line); color: var(--text);
-  border-radius: 8px; padding: 8px 15px; font-size: 13px; cursor: pointer;
-  font-family: inherit;
-}
-.controls button:hover:not(:disabled) { background: #24272e; }
-.controls button:disabled { opacity: 0.35; cursor: default; }
-.controls .toggle.on { background: var(--accent); color: #1a1600; border-color: var(--accent); }
-.progress { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-
-@media (max-width: 820px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .panel { max-height: 38vh; }
-  .instruction { left: 16px; right: 16px; bottom: 76px; }
-  .controls { left: 16px; }
+.camera-frame[data-ready="true"] video { opacity: 1; }
+.camera-waiting {
+  position: absolute; inset: 0; margin: 0; display: grid; place-items: center;
+  color: var(--ink-faint); font-size: 12.5px;
 }
 
-.camera { margin-top: 18px; }
-.camera video {
-  width: 100%; border-radius: 10px; background: #000;
-  aspect-ratio: 16/9; object-fit: cover; display: block;
-}
+/* Quiet, but still legible as a control rather than as a stray line of text. */
+.ghostbtn { border-color: var(--rule); }
+/* The only filled button in the panel. */
 .capture {
-  width: 100%; margin-top: 9px; padding: 11px; border-radius: 9px;
-  background: var(--accent); color: #1a1600; border: none; cursor: pointer;
-  font-size: 13.5px; font-weight: 650; font-family: inherit;
+  width: 100%; margin-top: 9px; padding: 10px; border-radius: var(--r-pill);
+  background: var(--signal); color: var(--signal-ink); border: 1px solid var(--signal);
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.005em;
+  transition: filter .12s ease;
 }
-.capture:disabled { opacity: 0.55; cursor: default; }
-.camera-error, .error {
-  font-size: 12.5px; color: var(--low); line-height: 1.5;
-  background: #2a1614; border: 1px solid #4a2320; border-radius: 8px;
-  padding: 9px 11px; margin: 12px 0 0;
-}
-.mock-note {
-  font-size: 12px; color: var(--accent); margin: 10px 0 0;
-  background: #241f05; border: 1px solid #4a3f0a; border-radius: 7px; padding: 7px 10px;
-}
+.capture:hover:not(:disabled) { filter: brightness(1.08); }
+.capture:disabled { opacity: .45; cursor: default; }
 
-.problem {
-  font-size: 12.5px; line-height: 1.5; color: var(--warn); margin: 12px 0 0;
-  background: #2a1f0c; border: 1px solid #4d3a14; border-radius: 8px; padding: 9px 11px;
+/* Notices are stated on a tinted rule, not in a filled slab. A coloured box
+   around every message made ordinary information look like an alarm. */
+.camera-error, .error, .problem, .mock-note {
+  font-size: 12.5px; line-height: 1.55; margin: 12px 0 0;
+  padding: 2px 0 2px 12px; border-left: 2px solid currentColor;
+  background: none; border-radius: 0;
 }
-.problem strong { display: block; margin-bottom: 3px; color: #ffc46b; }
-
-.voicebar { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.talkbtn {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 11px; border-radius: 9px; cursor: pointer; font-family: inherit;
-  font-size: 13.5px; font-weight: 600;
-  background: #1b2b22; color: #7fd6a0; border: 1px solid #2c4a36;
-}
-.talkbtn:hover { background: #20372a; }
-.talkbtn.live { background: #3a1f1f; color: #ff8d80; border-color: #5c2d2b; }
-.mutebtn {
-  padding: 11px 14px; border-radius: 9px; cursor: pointer; font-family: inherit;
-  font-size: 13px; background: #1b1e24; color: var(--text); border: 1px solid var(--line);
-}
-.mutebtn.on { background: var(--warn); color: #241400; border-color: var(--warn); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #5a5d65; flex: none; }
-.dot.live { background: #3ddc84; animation: pulse 1.4s ease-in-out infinite; }
-.dot.connecting { background: var(--accent); animation: pulse 0.8s ease-in-out infinite; }
-.dot.error { background: var(--low); }
-@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
-
-.talk {
-  margin-top: 10px; max-height: 190px; overflow-y: auto;
-  border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; background: #101216;
-}
-.talk p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.5; }
-.talk p span {
-  display: inline-block; min-width: 26px; font-weight: 700; font-size: 10px;
-  text-transform: uppercase; letter-spacing: 0.05em; margin-right: 6px;
-}
-.talk p.you span { color: var(--muted); }
-.talk p.assistant span { color: #7fd6a0; }
-.talk p.you { color: var(--muted); }
-
-.askform { margin-top: 8px; }
-.askform input {
-  width: 100%; padding: 9px 11px; border-radius: 8px; font-family: inherit;
-  font-size: 13px; background: #101216; color: var(--text);
-  border: 1px solid var(--line);
-}
-.askform input:focus { outline: none; border-color: #3ddc84; }
-
-/* --- live board map ------------------------------------------------------ */
-
-.tracker { margin-top: 18px; }
-.trackbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-
-.trackbtn {
-  display: flex; align-items: center; gap: 8px;
-  background: #1b1e24; color: var(--text); border: 1px solid var(--line);
-  border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer;
-}
-.trackbtn:hover:not(:disabled) { background: #22262d; }
-.trackbtn:disabled { opacity: 0.4; cursor: default; }
-.trackbtn.on { background: #1f3326; border-color: #2f6b45; color: #8ce3ae; }
-
-.ghostbtn {
-  background: transparent; color: var(--muted); border: 1px solid var(--line);
-  border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
-}
-.ghostbtn:hover { background: #1b1e24; color: var(--text); }
-
-.hint { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin: 6px 0; }
+.camera-error, .error { color: var(--rail-red-ink); }
+.problem { color: var(--warn); }
+.problem strong { display: block; margin-bottom: 2px; font-weight: 600; }
+.mock-note { color: var(--ink-faint); }
+.hint { font-size: 12.5px; line-height: 1.55; color: var(--ink-dim); margin: 7px 0; }
 .hint.warnhint { color: var(--warn); }
 
-.checks { list-style: none; padding: 0; margin: 8px 0 0; }
+/* --- instrument groups: tracker, laser, voice ----------------------------- */
+
+.trackbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 9px; }
+
+.trackbtn {
+  display: flex; align-items: center; gap: 9px;
+  background: var(--raised); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: var(--r-pill); padding: 9px 15px; font-size: 13px;
+  transition: border-color .12s ease;
+}
+.trackbtn:hover:not(:disabled) { border-color: var(--ink-faint); }
+.trackbtn:disabled { opacity: .35; cursor: default; }
+.trackbtn.on { color: var(--good); border-color: color-mix(in srgb, var(--good), transparent 55%); }
+.laser .trackbtn.on { color: var(--rail-red-ink); border-color: color-mix(in srgb, var(--rail-red), transparent 55%); }
+
+.ghostbtn {
+  background: transparent; color: var(--ink-dim); border: 1px solid transparent;
+  border-radius: var(--r-pill); padding: 7px 13px; font-size: 12.5px;
+  transition: color .12s ease, background .12s ease;
+}
+.ghostbtn:hover { background: var(--raised); color: var(--ink); }
+
+.checks { list-style: none; padding: 0; margin: 10px 0 0; }
 .checks li {
-  display: flex; gap: 8px; align-items: baseline;
-  font-size: 12.5px; line-height: 1.5; padding: 5px 0;
-  border-top: 1px solid var(--line);
+  display: flex; gap: 10px; align-items: baseline;
+  font-size: 12.5px; line-height: 1.55; padding: 8px 0; border-top: 1px solid var(--rule);
 }
-.checks li.extra { color: var(--muted); }
-.pip { width: 8px; height: 8px; border-radius: 50%; flex: none; transform: translateY(-1px); }
+.checks li.extra { color: var(--ink-dim); }
+.pip { width: 6px; height: 6px; border-radius: 50%; flex: none; transform: translateY(-2px); }
 
-/* Sits over the 3D view: the plan is still behind it, so it reads as an
-   inspection panel rather than a separate screen. */
-.boardmap {
-  position: absolute; left: 14px; right: 14px; top: 14px; z-index: 5;
-  background: rgba(12, 13, 16, 0.94); border: 1px solid var(--line);
-  border-radius: 12px; padding: 10px; backdrop-filter: blur(8px);
-}
-.boardmap img { width: 100%; display: block; border-radius: 8px; }
-.boardmap-bar {
-  display: flex; gap: 8px; align-items: center; margin-bottom: 9px;
-  font-size: 12px; color: var(--muted);
-}
-.boardmap-bar strong { flex: 1; color: var(--text); font-size: 12.5px; font-weight: 600; }
-.boardmap-bar button {
-  background: #1b1e24; color: var(--muted); border: 1px solid var(--line);
-  border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer;
-}
-.boardmap-bar button:hover { color: var(--text); }
-.boardmap-bar button.on { background: var(--accent); color: #1a1600; border-color: var(--accent); }
+.calbar { height: 2px; background: var(--rule); border-radius: 2px; overflow: hidden; margin: 9px 0; }
+.calbar span { display: block; height: 100%; background: var(--signal); transition: width .3s ease; }
 
-/* Plan / My board */
+.voicebar { margin-top: 10px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.talkbtn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 10px 16px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
+  background: var(--raised); color: var(--ink); border: 1px solid var(--rule);
+  transition: border-color .12s ease, color .12s ease;
+}
+.talkbtn:hover { border-color: var(--ink-faint); }
+.talkbtn.live { color: var(--rail-red-ink); border-color: color-mix(in srgb, var(--rail-red), transparent 55%); }
+.mutebtn {
+  padding: 10px 15px; border-radius: var(--r-pill); font-size: 12.5px;
+  background: transparent; color: var(--ink-dim); border: 1px solid var(--rule);
+}
+.mutebtn:hover { color: var(--ink); }
+.mutebtn.on { color: var(--warn); border-color: color-mix(in srgb, var(--warn), transparent 60%); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+.dot.live { background: var(--good); animation: pulse 2s ease-in-out infinite; }
+.dot.connecting { background: var(--signal); animation: pulse 1s ease-in-out infinite; }
+.dot.error { background: var(--rail-red); }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
+
+.talk { margin-top: 10px; max-height: 190px; overflow-y: auto; border-left: 1px solid var(--rule); padding: 2px 0 2px 12px; }
+.talk p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.55; }
+.talk p span {
+  display: block; font-weight: 500; font-size: 11px; color: var(--ink-faint);
+  text-transform: none; letter-spacing: 0; margin-bottom: 2px;
+}
+.talk p.assistant span { color: var(--good); }
+.talk p.you { color: var(--ink-dim); }
+
+.askform { margin-top: 9px; }
+.askform input {
+  width: 100%; padding: 10px 14px; border-radius: var(--r-pill); font-size: 13px;
+  background: var(--chassis); color: var(--ink); border: 1px solid var(--rule);
+}
+.askform input::placeholder { color: var(--ink-faint); }
+.askform input:focus { outline: none; border-color: var(--ink-faint); }
+
+/* --- stage ---------------------------------------------------------------- */
+
+.stage { position: relative; overflow: hidden; }
+.stage canvas { display: block; }
+
+/* Instruction and controls are one docked unit, not two things floating at
+   different heights. The stage is the board; this is its caption, and a
+   caption belongs attached to its subject. */
+.stage-dock {
+  position: absolute; left: 22px; right: 22px; bottom: 22px; z-index: 4;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  pointer-events: none;
+}
+.stage-dock > * { pointer-events: auto; }
+
+.instruction {
+  max-width: 560px;
+  background: rgba(22, 24, 27, .82); backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid var(--rule); border-radius: var(--r-xl);
+  padding: 16px 20px;
+}
+.instruction strong {
+  display: block; font-size: 12px; font-weight: 500; color: var(--signal);
+  margin-bottom: 7px;
+}
+.instruction p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ink); }
+.instruction .warn { color: var(--warn); font-size: 13px; margin-top: 8px; }
+.instruction .tally { color: var(--ink-faint); font-size: 12.5px; margin-top: 8px; }
+
+/* Three weights of control and only three: one filled primary anywhere on
+   screen, outlined secondaries, and toggles that stay quiet until they are on.
+   Five competing fills used to sit on one panel, so none read as the action. */
+.controls { display: flex; align-items: center; gap: 6px; }
+.controls button {
+  background: rgba(22, 24, 27, .78); backdrop-filter: blur(16px);
+  border: 1px solid var(--rule); color: var(--ink-dim);
+  border-radius: var(--r-pill); padding: 9px 16px; font-size: 13px;
+  transition: color .12s ease, background .12s ease, border-color .12s ease;
+}
+.controls button:hover:not(:disabled) { background: var(--raised); color: var(--ink); }
+.controls button:disabled { opacity: .3; cursor: default; }
+.controls .toggle.on { background: var(--raised); border-color: var(--ink-faint); color: var(--ink); }
+/* A dot, not a fill: an engaged toggle is a state, not an action. */
+.controls .toggle.on::before {
+  content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--signal); margin-right: 7px; vertical-align: 1px;
+}
+.progress { color: var(--ink-faint); font-size: 12.5px; padding: 0 6px; }
+
+/* --- stage chrome --------------------------------------------------------
+   Everything floating over the board shares one surface, so the controls read
+   as a single layer of glass above the work rather than four unrelated
+   widgets that happen to sit at the same height. */
+
+.viewswitch, .components-trigger, .docs-trigger, .part-actions {
+  background: rgba(22, 24, 27, .78);
+  border: 1px solid var(--rule);
+  backdrop-filter: blur(16px) saturate(1.2);
+}
+
 .viewswitch {
-  position: absolute; top: 14px; right: 78px; display: flex; gap: 2px;
-  background: rgba(20, 22, 26, 0.92); border: 1px solid var(--line);
-  border-radius: 9px; padding: 3px; backdrop-filter: blur(8px);
+  position: absolute; z-index: 8; top: 16px; right: 92px;
+  display: flex; gap: 2px; border-radius: var(--r-pill); padding: 3px;
 }
 .viewswitch button {
-  background: transparent; color: var(--muted); border: 0;
-  border-radius: 7px; padding: 7px 13px; font-size: 12.5px; cursor: pointer;
+  background: transparent; color: var(--ink-dim); border: 0;
+  border-radius: var(--r-pill); padding: 7px 15px; font-size: 12.5px;
+  transition: color .12s ease, background .12s ease;
 }
-.viewswitch button:hover { color: var(--text); }
-.viewswitch button.on { background: var(--accent); color: #1a1600; font-weight: 600; }
-
-/* --- Plan-mode component workbench -------------------------------------- */
+.viewswitch button:hover { color: var(--ink); }
+.viewswitch button.on { background: var(--raised); color: var(--ink); font-weight: 500; }
 
 .components-trigger {
-  position: absolute; z-index: 8; top: 14px; left: 14px;
-  display: flex; align-items: center; gap: 8px; min-height: 37px;
-  padding: 7px 12px; border: 1px solid #3a3d45; border-radius: 9px;
-  background: rgba(20, 22, 26, 0.94); color: var(--text); cursor: pointer;
-  font: 600 12.5px/1 ui-sans-serif, system-ui, sans-serif;
-  box-shadow: 0 8px 24px rgba(0,0,0,.22); backdrop-filter: blur(8px);
+  position: absolute; z-index: 8; top: 16px; left: 16px;
+  display: flex; align-items: center; gap: 9px; min-height: 36px;
+  padding: 7px 15px; border-radius: var(--r-pill);
+  color: var(--ink); font-size: 12.5px; font-weight: 500;
+  transition: border-color .12s ease;
 }
-.components-trigger:hover, .components-trigger.on { border-color: var(--accent); }
-.cube-icon { color: var(--accent); font-size: 20px; line-height: 0; transform: rotate(45deg); }
+.components-trigger:hover, .components-trigger.on { border-color: var(--ink-faint); }
+.cube-icon { color: var(--ink-faint); font-size: 17px; line-height: 0; transform: rotate(45deg); }
+.components-trigger.on .cube-icon { color: var(--signal); }
 .component-count {
-  display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px;
-  border-radius: 10px; background: var(--accent); color: #1a1600; font-size: 10px;
+  display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--raised); color: var(--ink); font-size: 10.5px;
 }
 
+.docs-trigger {
+  position: absolute; z-index: 8; top: 16px; right: 16px; min-height: 36px;
+  padding: 7px 16px; border-radius: var(--r-pill); display: grid; place-items: center;
+  color: var(--ink-dim); font-size: 12.5px; font-weight: 500; text-decoration: none;
+  transition: color .12s ease, border-color .12s ease;
+}
+.docs-trigger:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+.part-actions {
+  position: absolute; z-index: 6; top: 62px; right: 16px;
+  display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: var(--r-md);
+}
+.part-actions span { color: var(--ink-faint); font-size: 11.5px; padding: 0 8px; }
+.part-actions button {
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-dim);
+  padding: 6px 10px; font-size: 11.5px;
+  transition: background .12s ease, color .12s ease;
+}
+.part-actions button:hover:not(:disabled) { background: var(--raised); color: var(--ink); }
+.part-actions button:disabled { opacity: .3; cursor: default; }
+
+.boardmap {
+  position: absolute; z-index: 5; left: 16px; right: 16px; top: 62px;
+  background: rgba(22, 24, 27, .9); border: 1px solid var(--rule);
+  border-radius: var(--r-xl); padding: 12px; backdrop-filter: blur(16px);
+}
+.boardmap img { width: 100%; display: block; border-radius: var(--r-md); }
+.boardmap-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--ink-dim); }
+.boardmap-bar strong { flex: 1; color: var(--ink); font-size: 13px; font-weight: 600; }
+.boardmap-bar button {
+  background: transparent; color: var(--ink-dim); border: 1px solid var(--rule);
+  border-radius: var(--r-sm); padding: 5px 10px; font-size: 12px;
+}
+.boardmap-bar button:hover { color: var(--ink); }
+.boardmap-bar button.on { color: var(--signal); border-color: color-mix(in srgb, var(--signal), transparent 55%); }
+
+.plan-stage:has(.components-drawer) canvas { cursor: crosshair; }
+
+.canvas-part-label {
+  width: 226px; padding: 11px 13px; border: 1px solid var(--rule); border-radius: var(--r-md);
+  background: rgba(20, 22, 25, .96); color: var(--ink-dim);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+  pointer-events: none; font: 11.5px/1.5 var(--sans);
+}
+.canvas-part-label strong { display: block; margin-bottom: 3px; color: var(--ink); font-size: 12px; }
+.canvas-part-label span { display: block; }
+
+/* --- component library ---------------------------------------------------- */
+
 .components-drawer {
-  position: absolute; z-index: 7; top: 60px; left: 14px; bottom: 142px;
-  width: min(360px, calc(100% - 28px)); overflow: hidden;
-  display: flex; flex-direction: column; padding: 14px;
-  border: 1px solid #363941; border-radius: 13px;
-  background: rgba(15, 17, 21, .97); box-shadow: 0 18px 54px rgba(0,0,0,.45);
-  backdrop-filter: blur(14px);
+  position: absolute; z-index: 7; top: 62px; left: 16px; bottom: 104px;
+  width: min(372px, calc(100% - 32px)); overflow: hidden;
+  display: flex; flex-direction: column; padding: 16px;
+  border: 1px solid var(--rule); border-radius: var(--r-xl);
+  background: rgba(20, 22, 25, .94); backdrop-filter: blur(20px) saturate(1.2);
 }
 .components-heading { display: flex; align-items: flex-start; gap: 12px; }
-.components-heading > div { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.components-heading strong { font-size: 14px; }
-.components-heading span { color: var(--muted); font-size: 11px; }
+.components-heading > div { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.components-heading strong { font-size: 14px; font-weight: 600; }
+.components-heading span { color: var(--ink-dim); font-size: 12px; }
 .components-heading button {
-  width: 27px; height: 27px; border: 0; border-radius: 7px; cursor: pointer;
-  color: var(--muted); background: #23262c; font-size: 19px; line-height: 1;
+  width: 26px; height: 26px; border: 0; border-radius: var(--r-sm);
+  color: var(--ink-dim); background: transparent; font-size: 18px; line-height: 1;
 }
+.components-heading button:hover { background: var(--raised); color: var(--ink); }
+
 .component-search {
-  width: 100%; margin: 13px 0 11px; padding: 9px 10px; border-radius: 8px;
-  color: var(--text); background: #0c0e11; border: 1px solid #30333a; font: inherit;
+  width: 100%; margin: 14px 0 12px; padding: 10px 14px; border-radius: var(--r-pill);
+  color: var(--ink); background: var(--chassis); border: 1px solid var(--rule); font-size: 13px;
 }
-.component-search:focus { outline: none; border-color: var(--accent); }
+.component-search::placeholder { color: var(--ink-faint); }
+.component-search:focus { outline: none; border-color: var(--ink-faint); }
+
 .component-grid {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px;
-  overflow-y: auto; padding-right: 3px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+  overflow-y: auto; padding-right: 4px;
+  scrollbar-width: thin; scrollbar-color: var(--raised) transparent;
 }
+/* No border until you reach for one: twenty-nine outlined tiles at once is a
+   grid of boxes, and the parts are the thing worth looking at. */
 .component-card {
-  min-width: 0; min-height: 110px; padding: 10px 6px 8px; border-radius: 9px;
-  border: 1px solid #2b2e35; background: #191b20; color: var(--text); cursor: grab;
+  min-width: 0; min-height: 118px; padding: 12px 6px 10px; border-radius: var(--r-lg);
+  border: 1px solid transparent; background: transparent; color: var(--ink); cursor: grab;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  font-family: inherit; text-align: center; position: relative;
+  text-align: center; position: relative;
+  transition: background .12s ease, border-color .12s ease;
 }
-.component-card:hover { border-color: #686b72; background: #202329; transform: translateY(-1px); }
+.component-card:hover { border-color: var(--rule); background: var(--raised); }
 .component-card:active { cursor: grabbing; }
-.component-card > span:not(.part-preview) { font-size: 10.5px; line-height: 1.2; margin-top: 8px; }
-.component-card small { color: var(--muted); font-size: 9px; margin-top: 3px; }
+.component-card > span:not(.part-preview) { font-size: 11px; line-height: 1.3; margin-top: 9px; font-weight: 450; }
+.component-card small { color: var(--ink-faint); font-size: 10px; margin-top: 2px; }
+
 .component-tooltip {
-  position: fixed; z-index: 30; width: 250px; padding: 11px 12px;
-  border: 1px solid #494d56; border-radius: 9px; pointer-events: none;
-  color: #cdd0d6; background: rgba(11,13,16,.98); box-shadow: 0 12px 32px rgba(0,0,0,.55);
-  font-size: 11.5px; line-height: 1.45; text-align: left;
+  position: fixed; z-index: 30; width: 244px; padding: 11px 13px;
+  border: 1px solid var(--rule); border-radius: var(--r-md); pointer-events: none;
+  color: var(--ink-dim); background: rgba(20, 22, 25, .98);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+  font-size: 11.5px; line-height: 1.5; text-align: left;
   opacity: 0; visibility: hidden; transform: translate(60px, -58px);
   transition: opacity .12s ease 3s, visibility 0s linear 3s;
 }
-.component-tooltip strong { display: block; color: var(--accent); margin-bottom: 4px; font-size: 11.5px; }
+.component-tooltip strong { display: block; color: var(--ink); margin-bottom: 4px; font-size: 12px; }
 .component-card:hover .component-tooltip,
 .component-card:focus-visible .component-tooltip { opacity: 1; visibility: visible; }
 .component-card:not(:hover):not(:focus-visible) .component-tooltip {
   transition-delay: 0s; opacity: 0; visibility: hidden;
 }
+
+/* Rendered by `npm run thumbs`. The CSS shapes below are the fallback for a
+   checkout where they have not been generated yet. */
+.part-thumb { width: 74px; height: 74px; object-fit: contain; display: block; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .5)); }
+
 .part-preview {
   --part-color: #64748b; position: relative; display: block; width: 54px; height: 37px;
   border-radius: 4px; background: var(--part-color); transform: rotateX(55deg) rotateZ(-28deg);
-  box-shadow: -7px 8px 0 color-mix(in srgb, var(--part-color), #000 35%), 0 10px 16px rgba(0,0,0,.35);
+  box-shadow: -7px 8px 0 color-mix(in srgb, var(--part-color), #000 35%), 0 10px 16px rgba(0, 0, 0, .35);
 }
 .part-preview::after {
   content: ""; position: absolute; inset: 7px; border-radius: 3px;
-  border: 2px solid rgba(255,255,255,.38); box-shadow: inset 0 0 0 3px rgba(0,0,0,.18);
+  border: 2px solid rgba(255, 255, 255, .38); box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .18);
 }
 .shape-led, .shape-capacitor, .shape-buzzer, .shape-motor { width: 30px; border-radius: 50%; }
 .shape-resistor, .shape-wire { width: 54px; height: 15px; margin: 11px 0; border-radius: 9px; }
 .shape-resistor::after { inset: 3px 17px; border: 0; border-left: 3px solid #4b3621; border-right: 3px solid #dc2626; }
 .shape-ic { height: 24px; margin: 6px 0; background: #24262b; }
-.shape-sensor::after { inset: 7px 5px; border: 0; background: radial-gradient(circle at 25% 50%, #d8dde3 0 6px, transparent 7px), radial-gradient(circle at 75% 50%, #d8dde3 0 6px, transparent 7px); }
+.shape-sensor::after {
+  inset: 7px 5px; border: 0;
+  background: radial-gradient(circle at 25% 50%, #d8dde3 0 6px, transparent 7px),
+              radial-gradient(circle at 75% 50%, #d8dde3 0 6px, transparent 7px);
+}
 
-.part-actions {
-  position: absolute; z-index: 6; top: 61px; right: 14px;
-  display: flex; align-items: center; gap: 5px; padding: 4px;
-  background: rgba(20,22,26,.92); border: 1px solid var(--line); border-radius: 9px;
-}
-.part-actions span { color: var(--muted); font-size: 11px; padding: 0 6px; }
-.part-actions button {
-  border: 0; border-radius: 6px; background: #292c32; color: var(--text);
-  padding: 6px 9px; font: 11px/1 inherit; cursor: pointer;
-}
-.part-actions button:hover:not(:disabled) { background: #363a42; }
-.part-actions button:disabled { opacity: .35; cursor: default; }
-.plan-stage { outline: 1px solid transparent; outline-offset: -1px; }
-.plan-stage:has(.components-drawer) canvas { cursor: crosshair; }
+/* --- project library ------------------------------------------------------ */
 
-.canvas-part-label {
-  width: 230px; padding: 10px 12px; border: 1px solid #4a4e57; border-radius: 9px;
-  background: rgba(12,14,18,.95); color: #cfd2d8; box-shadow: 0 12px 30px rgba(0,0,0,.4);
-  pointer-events: none; font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+.build-title-row { display: flex; align-items: flex-start; gap: 10px; }
+.build-title-row h1 { flex: 1; min-width: 0; }
+.project-trigger, .project-panel button {
+  border: 1px solid var(--rule); background: var(--raised); color: var(--ink);
+  border-radius: var(--r-sm); padding: 6px 10px;
 }
-.canvas-part-label strong { display: block; margin-bottom: 3px; color: var(--accent); font-size: 12px; }
-.canvas-part-label span { display: block; }
+.project-trigger { flex: none; margin-top: -2px; font-size: 11px; }
+.availability {
+  color: var(--ink-faint); font: 9px var(--mono); text-transform: uppercase;
+  border: 1px solid var(--rule); border-radius: var(--r-pill); padding: 1px 6px;
+}
+.availability.missing { color: var(--rail-red-ink); }
 
-.docs-trigger {
-  position: absolute; z-index: 8; top: 14px; right: 14px; min-height: 37px;
-  padding: 7px 12px; border: 1px solid #3a3d45; border-radius: 9px;
-  background: rgba(20,22,26,.94); color: var(--text); cursor: pointer;
-  font: 600 12px/1 ui-sans-serif, system-ui, sans-serif; backdrop-filter: blur(8px);
-  text-decoration: none; display: grid; place-items: center;
+.project-scrim {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  padding: 24px; background: rgba(5, 6, 8, .72); backdrop-filter: blur(8px);
 }
-.docs-trigger:hover { border-color: var(--accent); color: var(--accent); }
+.project-panel {
+  width: min(680px, 100%); max-height: min(760px, calc(100vh - 48px)); overflow: auto;
+  padding: 22px; border: 1px solid #363b43; border-radius: var(--r-xl);
+  background: #1b1e22; box-shadow: 0 28px 90px rgba(0, 0, 0, .55);
+}
+.project-panel > header { display: flex; justify-content: space-between; gap: 16px; }
+.project-panel h2 { margin: 2px 0 0; font-size: 23px; }
+.project-panel h3 { margin: 0; font-size: 13px; }
+.project-panel .eyebrow { color: var(--signal); font: 10px var(--mono); letter-spacing: .12em; }
+.project-panel .closebtn { width: 34px; height: 34px; padding: 0; font-size: 21px; }
+.goal-form {
+  margin: 22px 0; padding: 16px; border: 1px solid var(--rule);
+  border-radius: var(--r-lg); background: var(--chassis);
+}
+.goal-form label { display: block; margin-bottom: 8px; font-weight: 600; }
+.goal-form > div { display: flex; gap: 8px; }
+.goal-form input {
+  min-width: 0; flex: 1; border: 1px solid #3a3f47; border-radius: var(--r-sm);
+  padding: 10px 12px; background: #101215; color: var(--ink);
+}
+.goal-form button { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); font-weight: 650; }
+.goal-form p { margin: 8px 0 0; color: var(--ink-faint); font-size: 11px; }
+.project-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.project-list { display: grid; gap: 8px; }
+.project-list article {
+  display: flex; align-items: stretch; border: 1px solid var(--rule);
+  border-radius: var(--r-md); overflow: hidden; background: var(--chassis);
+}
+.project-list article.active { border-color: color-mix(in srgb, var(--signal), transparent 35%); }
+.project-list .project-open {
+  flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left;
+  border: 0; border-radius: 0; padding: 12px 14px; background: transparent;
+}
+.project-open span { color: var(--ink-faint); font-size: 11px; }
+.project-list .project-delete {
+  border-width: 0 0 0 1px; border-radius: 0; color: var(--ink-faint); background: transparent;
+}
+.project-list .empty { color: var(--ink-faint); }
+
+.artifact { margin-top: 10px; max-width: min(700px, 70vw); }
+.manual-complete {
+  margin-top: 9px; border: 1px solid var(--rule); border-radius: var(--r-sm);
+  padding: 7px 10px; background: var(--raised); color: var(--ink);
+}
+.manual-complete.done { border-color: var(--good); color: #74d8a4; }
+.artifact summary { cursor: pointer; color: var(--signal); }
+.artifact pre {
+  max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 12px;
+  border: 1px solid var(--rule); border-radius: var(--r-sm);
+  background: #0d0f12; color: #d9e0e8; font: 11px/1.45 var(--mono); white-space: pre;
+}
+
+/* --- narrow --------------------------------------------------------------- */
 
 @media (max-width: 820px) {
-  .components-drawer { bottom: 132px; width: min(340px, calc(100% - 28px)); }
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .panel { max-height: 44vh; padding: 16px 16px 24px; }
+
+  /* The preview is a viewfinder, not the subject. At full width it took the
+     whole panel and pushed every control below the fold. A fixed height rather
+     than an aspect ratio with a cap: capping the height of a ratio box shrinks
+     its width to match, so the preview stopped filling the panel. */
+  .camera-frame { aspect-ratio: auto; height: 124px; }
+
+  .stage-dock { left: 14px; right: 14px; bottom: 14px; }
+  .instruction { max-width: none; }
+  .controls { flex-wrap: wrap; }
+
+  /* Two rows of chrome rather than one: at this width the view switch and the
+     triggers cannot share a line without overlapping. */
+  .components-trigger, .docs-trigger { top: 14px; }
+  .components-trigger { left: 14px; }
+  .docs-trigger { right: 14px; }
+  .viewswitch { top: 62px; right: 14px; }
+  .part-actions { top: 62px; left: 14px; right: auto; }
+
+  .components-drawer, .boardmap {
+    top: 110px; left: 14px; right: 14px; width: auto;
+  }
+  .components-drawer { bottom: 116px; }
   .component-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .part-actions { top: 58px; }
-  .viewswitch { top: 58px; right: 14px; }
-}
-
-.instruction .tally { color: var(--muted); font-size: 12.5px; margin-top: 5px; }
-
-/* --- laser ---------------------------------------------------------------- */
-
-.laser { margin-top: 18px; }
-.laser .trackbtn.on { background: #3a1f22; border-color: #6b2f33; color: #ff9d95; }
-
-.calbar {
-  height: 4px; background: #1b1e24; border-radius: 3px;
-  overflow: hidden; margin: 7px 0;
-}
-.calbar span {
-  display: block; height: 100%; background: var(--accent);
-  transition: width 0.3s ease;
+  .project-scrim { padding: 10px; }
+  .goal-form > div { flex-direction: column; }
 }

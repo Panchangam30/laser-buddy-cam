@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "playwright test",
     "test:e2e": "playwright test",
-    "dev:vision": "cd .. && .venv/bin/python -m vision.service"
+    "dev:vision": "cd .. && .venv/bin/python -m vision.service",
+    "thumbs": "node scripts/thumbs.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

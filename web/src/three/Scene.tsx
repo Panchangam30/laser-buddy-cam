@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, ContactShadows } from "@react-three/drei";
 import { Breadboard } from "./Breadboard";
@@ -8,7 +9,7 @@ import type { Plan } from "../lib/types";
 import type { World } from "../lib/world";
 import type { Guidance } from "../lib/guidance";
 import { KitPartsLayer, type PlacedKitPart } from "../components/StarterKit";
-import { useState } from "react";
+import { ExternalDevices, externalAnchorMap } from "./ExternalDevices";
 
 /**
  * What the student is looking at.
@@ -38,18 +39,31 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
 }) {
   const [focusedMove, setFocusedMove] = useState(false);
   const visibleAt = new Map<string, number>();
-  plan.steps.forEach((s) => s.adds.forEach((id) => visibleAt.set(id, s.n)));
-  const currentIds = new Set(plan.steps.find((s) => s.n === step)?.adds ?? []);
+  plan.steps.forEach((s) => [...s.adds, ...(s.renders ?? [])]
+    .forEach((id) => visibleAt.set(id, s.n)));
+  const current = plan.steps.find((s) => s.n === step);
+  const currentIds = new Set([...(current?.adds ?? []), ...(current?.renders ?? [])]);
+  const devices = plan.devices ?? [];
+  const externalAnchors = useMemo(() => externalAnchorMap(devices), [devices]);
+  const visibleDeviceIds = devices
+    .filter((device) => (device.visibleFromStep ?? 1) <= step)
+    .map((device) => device.id).join(" ");
+  const visiblePartIds = plan.parts
+    .filter((part) => (visibleAt.get(part.id) ?? 1) <= step)
+    .map((part) => part.id).join(" ");
 
   const showPlan = mode !== "live";
   const showWorld = mode !== "plan";
 
   return (
     <Canvas
+      data-testid="assembly-scene"
+      data-device-ids={visibleDeviceIds}
+      data-part-ids={visiblePartIds}
       shadows
       dpr={[1, 2]}
       // Distance chosen to frame the whole 162mm board with margin at this fov.
-      camera={{ position: [0, 128, 162], fov: 36 }}
+      camera={{ position: [0, 158, 205], fov: 36 }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.82 }}
       style={{ background: "radial-gradient(120% 90% at 50% 18%, #1c2028 0%, #0b0c0f 70%)" }}
     >
@@ -68,15 +82,20 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
       <group>
         <Breadboard />
 
+        {showPlan && <ExternalDevices devices={devices} step={step} dimmed={exploded} />}
+
         {showPlan && plan.parts.map((p) => {
           const at = visibleAt.get(p.id) ?? 1;
           if (at > step) return null;
           const isCurrent = currentIds.has(p.id);
           return (
-            <group key={p.id} position={exploded && isCurrent ? [0, 26, 0] : [0, 0, 0]}>
-              <PartMesh part={p} highlighted={isCurrent}
-                        dimmed={!isCurrent && exploded} />
-            </group>
+            // The lift goes to PartMesh, not a wrapping group: only the part
+            // itself can damp the change, and a group here would teleport it.
+            <PartMesh key={p.id} part={p}
+                      lift={exploded && isCurrent ? 26 : 0}
+                      highlighted={isCurrent}
+                      dimmed={!isCurrent && exploded}
+                      externalAnchors={externalAnchors} />
           );
         })}
 
@@ -91,8 +110,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
         )}
       </group>
 
-      <ContactShadows position={[0, -4.6, 0]} opacity={0.62} scale={280} blur={2.2} far={50} />
-      <OrbitControls makeDefault enablePan enabled={!focusedMove} target={[0, 0, 0]}
+      <ContactShadows position={[0, -4.6, -18]} opacity={0.62} scale={340} blur={2.2} far={50} />
+      <OrbitControls makeDefault enablePan enabled={!focusedMove} target={[0, 0, -18]}
         minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />
     </Canvas>
   );

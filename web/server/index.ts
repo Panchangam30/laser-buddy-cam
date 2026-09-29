@@ -3,6 +3,8 @@ import { config } from "dotenv";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PLAN_PROMPT } from "./prompt.js";
+import { planForGoal } from "./goalPlans.js";
+import { validatePlanShape } from "./validatePlan.js";
 
 // Reuse the same .env the Python CLI uses -- one place for both keys.
 const here = dirname(fileURLToPath(import.meta.url));
@@ -110,16 +112,37 @@ app.post("/api/plan", async (req, res) => {
       return res.status(r.status).json({ error: `OpenAI ${r.status}`, detail: body.slice(0, 400) });
     }
 
-    const data = await r.json();
+    const data = await r.json() as {
+      choices?: { message?: { content?: string } }[];
+    };
     const raw = data.choices?.[0]?.message?.content ?? "";
     try {
-      res.json(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      const invalid = validatePlanShape(parsed);
+      if (invalid) return res.status(502).json({ error: "model returned an unsafe plan", detail: invalid });
+      res.json(parsed);
     } catch {
       res.status(502).json({ error: "model did not return valid JSON", detail: raw.slice(0, 400) });
     }
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
+});
+
+/** Named goal -> a validated, deterministic plan. */
+app.post("/api/plan/goal", (req, res) => {
+  const goal = typeof req.body?.goal === "string" ? req.body.goal.trim() : "";
+  if (!goal) return res.status(400).json({ error: "Describe what you want to build." });
+  const result = planForGoal(goal);
+  if (!result) {
+    return res.status(422).json({
+      error: "That goal is not in the verified project catalog yet.",
+      detail: "Try “make a servo sweep on a button press”. Unsupported goals are refused instead of receiving invented wiring.",
+    });
+  }
+  const invalid = validatePlanShape(result.plan);
+  if (invalid) return res.status(500).json({ error: "verified template failed validation", detail: invalid });
+  res.json(result.plan);
 });
 
 /** Step text -> spoken audio, via Grok TTS. Returns mp3 bytes. */

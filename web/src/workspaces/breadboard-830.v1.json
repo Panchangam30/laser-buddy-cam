@@ -1,0 +1,52 @@
+{
+  "$schema": "./workspace.schema.json",
+  "id": "breadboard-830",
+  "version": 1,
+  "kind": "breadboard",
+  "label": "830-point solderless breadboard",
+  "units": "mm",
+  "dimensions": {
+    "width": 162.56,
+    "depth": 48.26,
+    "height": 9
+  },
+  "columns": {
+    "count": 63,
+    "pitch": 2.54,
+    "firstX": -78.74
+  },
+  "lines": [
+    { "id": "A",  "kind": "terminal", "z": -13.97, "nodeGroup": "low" },
+    { "id": "B",  "kind": "terminal", "z": -11.43, "nodeGroup": "low" },
+    { "id": "C",  "kind": "terminal", "z": -8.89,  "nodeGroup": "low" },
+    { "id": "D",  "kind": "terminal", "z": -6.35,  "nodeGroup": "low" },
+    { "id": "E",  "kind": "terminal", "z": -3.81,  "nodeGroup": "low" },
+    { "id": "F",  "kind": "terminal", "z": 3.81,   "nodeGroup": "high" },
+    { "id": "G",  "kind": "terminal", "z": 6.35,   "nodeGroup": "high" },
+    { "id": "H",  "kind": "terminal", "z": 8.89,   "nodeGroup": "high" },
+    { "id": "I",  "kind": "terminal", "z": 11.43,  "nodeGroup": "high" },
+    { "id": "J",  "kind": "terminal", "z": 13.97,  "nodeGroup": "high" },
+    { "id": "T+", "kind": "rail",     "z": 19.05,  "nodeGroup": "rail:T+" },
+    { "id": "T-", "kind": "rail",     "z": 21.59,  "nodeGroup": "rail:T-" },
+    { "id": "B+", "kind": "rail",     "z": -19.05, "nodeGroup": "rail:B+" },
+    { "id": "B-", "kind": "rail",     "z": -21.59, "nodeGroup": "rail:B-" }
+  ],
+  "railAppearance": {
+    "missingEvery": 6,
+    "stripeOffsetPitch": 0.78,
+    "stripeWidth": 1.6
+  },
+  "registration": {
+    "aspectTolerance": [2.1, 5.4],
+    "minimumAreaFraction": 0.045
+  },
+  "laser": {
+    "verificationAnchors": ["E8", "E32", "E56", "A8", "A56", "J8", "J32", "J56", "E32"],
+    "anchorTolerance": 1.27
+  },
+  "capabilities": {
+    "locationResolution": "anchor",
+    "connectivity": "static-complete",
+    "absoluteLaserTargeting": true
+  }
+}

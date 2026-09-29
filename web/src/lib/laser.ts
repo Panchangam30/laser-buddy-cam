@@ -1,3 +1,5 @@
+import type { WorkspaceLocation } from "./workspace";
+
 /**
  * The pan/tilt laser head.
  *
@@ -20,6 +22,8 @@ export interface Calibration {
   at: number;
   /** The same number said in holes, which is the unit that matters. */
   quality: string;
+  workspaceProfileId?: string;
+  workspaceProfileVersion?: number;
 }
 
 export interface LaserStatus {
@@ -94,3 +98,20 @@ export const setLaserPower = (on: boolean): Promise<MoveResult> =>
 /** Aim at a hole, e.g. "E20". Returns {ok} and an error when it cannot. */
 export const pointAt = (hole: string): Promise<{ ok: boolean; error?: string; hole?: string }> =>
   call("laser/point", { hole });
+
+/** Aim at a capability-checked workspace target. */
+export const pointAtLocation = (
+  target: WorkspaceLocation,
+): Promise<{ ok: boolean; error?: string; hole?: string }> => {
+  // Send the scoped target and its legacy coordinates together. Current vision
+  // services use `target`; an already-running service from before the workspace
+  // migration ignores it and falls back to `hole` or x/z instead of returning
+  // the confusing "supply a hole" error.
+  if (target.ref.kind === "anchor") {
+    return call("laser/point", { target, hole: target.ref.anchorId });
+  }
+  if (target.ref.kind === "metric") {
+    return call("laser/point", { target, x: target.ref.xMm, z: target.ref.zMm });
+  }
+  return call("laser/point", { target });
+};

@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
-from . import geometry as g
-from .board import BoardPose, NoBoard
+from . import geometry as g, workspace as ws
 from .detect import Blob
 from .track import Track
 
@@ -99,6 +99,11 @@ def _entity(track: Track, pose_confidence: str) -> dict:
         "confidence": confidence,
         "shape": b.shape,
         "pins": pins_for(b),
+        "locations": [ws.location(p) for p in pins_for(b) if p],
+        # Wire endpoints are observed at their ends. For a body, the camera often
+        # sees the body but not its bare leads, so its terminal attachment is an
+        # explicit inference rather than silently presented as equal evidence.
+        "terminalEvidence": "measured" if b.shape == "wire" and all(b.endpoints) else "inferred",
         "holes": list(b.holes),
         "footprint": where,
         "footprintBox": b.footprint_text(),
@@ -143,11 +148,16 @@ def check_wiring(entities: list[dict], nets: dict[str, list[str]]) -> list[Issue
         # them, so the part carries no current and does nothing.
         if len(own) >= 2 and own[0] is not None and len(set(own)) == 1:
             what = e["label"]
+            measured = e.get("terminalEvidence") == "measured"
             issues.append(Issue(
-                "error",
-                f"{what} has both legs in {pins[0]} and {pins[1]}, which are the "
-                f"same node -- the board already connects them, so it is shorted "
-                f"out and will do nothing.",
+                "error" if measured else "warn",
+                (f"{what} has both terminals in {pins[0]} and {pins[1]}, which are "
+                 f"the same node -- the board already connects them, so it is "
+                 f"shorted out and will do nothing."
+                 if measured else
+                 f"{what}'s visible body lies over one node at {pins[0]} and {pins[1]}. "
+                 f"Its bare leads are not visible, so check that its actual terminals "
+                 f"do not enter that same node."),
                 (e["id"],)))
 
     # A jumper straight across a supply is a short circuit, not a mistake in
@@ -181,9 +191,10 @@ def check_wiring(entities: list[dict], nets: dict[str, list[str]]) -> list[Issue
         if not protected:
             issues.append(Issue(
                 "warn",
-                f"{e['label']} at {e['footprint']} has no resistor on either of "
-                f"its nodes. An LED wired straight across a supply draws until it "
-                f"burns out -- add a series resistor.",
+                f"I cannot verify a resistor sharing either visible node of "
+                f"{e['label']} at {e['footprint']}. The camera may not see its bare "
+                f"leads, so check the real terminals before powering it; every LED "
+                f"needs a series resistor.",
                 (e["id"],)))
 
     for net, ids in nets.items():
@@ -221,6 +232,7 @@ class World:
     at: float = field(default_factory=time.time)
     frame: int = 0
     board: dict = field(default_factory=lambda: {"found": False})
+    workspace: dict = field(default_factory=lambda: ws.BREADBOARD.serialise())
     entities: list[dict] = field(default_factory=list)
     nets: dict[str, list[str]] = field(default_factory=dict)
     issues: list[Issue] = field(default_factory=list)
@@ -231,6 +243,7 @@ class World:
             "at": round(self.at, 3),
             "frame": self.frame,
             "board": self.board,
+            "workspace": self.workspace,
             "entities": self.entities,
             "nets": self.nets,
             "issues": [i.serialise() for i in self.issues],
@@ -263,16 +276,18 @@ class World:
         return "\n".join(lines)
 
 
-def build(pose: BoardPose | NoBoard, tracks: list[Track], frame: int,
+def build(pose: Any, tracks: list[Track], frame: int,
           errors: list[str] | None = None) -> World:
     """Assemble a snapshot from a pose and the live tracks."""
-    if isinstance(pose, NoBoard):
-        return World(frame=frame, board=pose.serialise(), errors=errors or [])
+    if getattr(pose, "found", True) is False:
+        return World(frame=frame, board=pose.serialise(),
+                     workspace=ws.BREADBOARD.serialise(pose), errors=errors or [])
 
     entities = [_entity(t, pose.confidence) for t in tracks]
     nets = _net_map(entities)
     issues = check_wiring(entities, nets)
     if pose.note:
         issues.append(Issue("info", pose.note))
-    return World(frame=frame, board=pose.serialise(), entities=entities,
+    return World(frame=frame, board=pose.serialise(),
+                 workspace=ws.BREADBOARD.serialise(pose), entities=entities,
                  nets=nets, issues=issues, errors=errors or [])

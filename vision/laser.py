@@ -33,6 +33,11 @@ BOOT_WAIT_S = 2.0
 #: Longest a single command may take. A full-sweep smooth move is ~800 ms.
 REPLY_TIMEOUT_S = 3.0
 
+#: Probes allowed when opening the link, and the pause between them. The first
+#: can arrive while the bootloader still has the port, so one is not enough.
+PROBE_ATTEMPTS = 4
+PROBE_GAP_S = 0.45
+
 #: Re-assert the laser inside the firmware's 15 s timeout.
 KEEPALIVE_S = 9.0
 
@@ -85,11 +90,6 @@ class LaserLink:
 
     # ------------------------------------------------------------- connection
 
-    #: errno values meaning the device itself went away, not a transient fault.
-    #: 6 ENXIO "Device not configured" is what macOS returns once an unplugged
-    #: board's handle is written to; 5 EIO and 19 ENODEV are the same story.
-    _DEAD_ERRNOS = frozenset({5, 6, 19})
-
     @property
     def connected(self) -> bool:
         """True only while the port is open AND has not failed fatally.
@@ -106,12 +106,12 @@ class LaserLink:
     def connect(self, port: str | None = None) -> bool:
         """Open the port and wait out the bootloader. Returns success."""
         if serial is None:
-            self.error = "pyserial is not installed -- pip install -r requirements.txt"
+            self.error = "pyserial is not installed. Run: pip install -r requirements.txt"
             return False
         self.disconnect()
         target = port or self.port or find_port()
         if not target:
-            self.error = "no Arduino found -- check the USB cable"
+            self.error = "No Arduino found. Check the USB cable."
             return False
 
         self._dead = False
@@ -130,9 +130,29 @@ class LaserLink:
         # Opening the port resets the board. Anything it says before the banner
         # is bootloader noise, so wait it out and clear it.
         time.sleep(BOOT_WAIT_S)
-        with self._lock:
-            self.ser.reset_input_buffer()
-            self.banner = self._command("?") or ""
+
+        # Probe a few times rather than once. Opening the port resets the Uno,
+        # and the bootloader runs for about a second before handing over; a
+        # probe that lands in that window is half-eaten, and the sketch then
+        # parses the leftovers as a command it does not know. The board is fine
+        # -- it answered -- so one mistimed probe must not fail the connection.
+        self.banner = ""
+        for attempt in range(PROBE_ATTEMPTS):
+            with self._lock:
+                if self.ser is None:
+                    break
+                self.ser.reset_input_buffer()
+                reply = self._command("?") or ""
+            if reply.startswith("OK"):
+                self.banner = reply
+                break
+            self.banner = reply
+            if not self.connected:
+                break            # link torn down; its own message is better
+            time.sleep(PROBE_GAP_S)
+
+        if not self.connected:
+            return False
         if not self.banner.startswith("OK"):
             self.error = (f"{target} answered {self.banner!r} rather than an angle "
                           f"report -- is the LaserBuddy sketch on this board?")
@@ -174,13 +194,24 @@ class LaserLink:
             # The firmware answers exactly one line per command, after the move
             # has finished. A blank read means it timed out.
             reply = self.ser.readline().decode(errors="replace").strip()
-            return reply or None
+            if not reply:
+                # Silence is not a valid answer: the firmware replies to every
+                # command. Usually the board has gone away, or reset under us.
+                self._mark_dead("the board stopped answering")
+                return None
+            return reply
         except Exception as e:
-            self.error = f"serial write failed: {e}"
-            # If the device is gone, drop the handle so the next call reconnects
-            # instead of failing forever against a port that no longer exists.
-            if getattr(e, "errno", None) in self._DEAD_ERRNOS:
-                self._mark_dead(f"the board disconnected ({e})")
+            # Any failure here tears the link down so the next call rebuilds it.
+            #
+            # Not just the ones that look fatal: pyserial wraps the underlying
+            # OSError in a SerialException and drops its errno, so the code that
+            # would distinguish "the board was unplugged" from a passing glitch
+            # is gone by the time we see it -- only the message survives, and
+            # matching on message text is a trap that breaks on the next
+            # pyserial release. Reconnecting costs two seconds and happens only
+            # after something already went wrong; not reconnecting leaves every
+            # later command failing against a handle that can never work again.
+            self._mark_dead(f"lost the link to the board ({e})")
             return None
 
     def _mark_dead(self, why: str) -> None:

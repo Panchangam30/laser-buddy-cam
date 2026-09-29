@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://laserbuddy.local/workspace.schema.json",
+  "title": "Laser Buddy workspace definition",
+  "type": "object",
+  "required": ["id", "version", "kind", "dimensions", "columns", "lines", "capabilities"],
+  "properties": {
+    "id": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "kind": { "enum": ["breadboard", "perfboard", "pcb", "work-mat"] },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "depth", "height"]
+    },
+    "columns": {
+      "type": "object",
+      "required": ["count", "pitch", "firstX"]
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "z", "nodeGroup"]
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["locationResolution", "connectivity", "absoluteLaserTargeting"]
+    }
+  }
+}
