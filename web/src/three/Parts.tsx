@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { holePosition, isExternal, externalPosition, type Vec3 } from "../lib/breadboard";
+import { holePosition, externalPosition, type Vec3 } from "../lib/breadboard";
 import { resistorBands } from "./labels";
 import type { Part } from "../lib/types";
 
@@ -48,11 +48,6 @@ function pinPositions(part: Part): THREE.Vector3[] | null {
 
   // A part with no on-board pin at all has nothing to attach to.
   return onBoard && out.length ? out : null;
-}
-
-/** True when this pin left the board. */
-export function pinIsExternal(ref: string): boolean {
-  return isExternal(ref) || holePosition(ref) === null;
 }
 
 export function PartMesh({ part, dimmed, highlighted }: {
@@ -110,18 +105,33 @@ function Wire({ part, pins, opacity, transparent, emissive, emissiveIntensity }:
   const geo = useMemo(() => {
     const [a, b] = [pins[0], pins[pins.length - 1]];
     const span = a.distanceTo(b);
-    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
-    mid.y += Math.min(4 + span * 0.18, 16);
-    const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-    return new THREE.TubeGeometry(curve, 24, 0.45, 7, false);
+    const direction = b.clone().sub(a);
+    const side = new THREE.Vector3(-direction.z, 0, direction.x).normalize().multiplyScalar(Math.min(span * .04, 1.4));
+    const lift = Math.min(4 + span * .18, 16);
+    const curve = new THREE.CatmullRomCurve3([
+      a, a.clone().lerp(b, .2).add(new THREE.Vector3(0, lift * .7, 0)).add(side),
+      a.clone().lerp(b, .5).add(new THREE.Vector3(0, lift, 0)),
+      a.clone().lerp(b, .8).add(new THREE.Vector3(0, lift * .7, 0)).sub(side), b,
+    ], false, "centripetal", .35);
+    return new THREE.TubeGeometry(curve, 40, 0.48, 10, false);
   }, [pins]);
 
   return (
+    <group>
     <mesh geometry={geo} castShadow>
       <meshStandardMaterial color={part.color ?? "#2f7fff"} roughness={0.45}
         opacity={opacity} transparent={transparent}
         emissive={emissive} emissiveIntensity={emissiveIntensity} />
     </mesh>
+    {[pins[0], pins[pins.length - 1]].map((point, index) => (
+      <group key={index} position={[point.x, point.y + .9, point.z]}>
+        <mesh><cylinderGeometry args={[.72, .62, 1.8, 10]} />
+          <meshStandardMaterial color={part.color ?? "#2f7fff"} roughness={.42} /></mesh>
+        <mesh position={[0, -1.05, 0]}><cylinderGeometry args={[.3, .3, .75, 8]} />
+          <meshStandardMaterial color="#cfd3d8" metalness={.86} roughness={.2} /></mesh>
+      </group>
+    ))}
+    </group>
   );
 }
 

@@ -47,6 +47,12 @@ export default function App() {
   const [labels, setLabels] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [componentsOpen, setComponentsOpen] = useState(false);
+  const [simulationRunning, setSimulationRunning] = useState(false);
+  const [simulationPowered, setSimulationPowered] = useState(true);
+  const [simulationRate, setSimulationRate] = useState(1);
+  const [simulationIncluded, setSimulationIncluded] = useState<string[]>([]);
+  const [simulationDetailsOpen, setSimulationDetailsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [kitParts, setKitParts] = useState<PlacedKitPart[]>([]);
   const [selectedKitPart, setSelectedKitPart] = useState<string | null>(null);
   const nextKitId = useRef(1);
@@ -371,8 +377,15 @@ export default function App() {
   const visionDown = keys.vision === "not running";
 
   return (
-    <div className="app">
-      <aside className="panel">
+    <div className={`app ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+      <aside className={`panel ${sidebarOpen ? "" : "collapsed"}`} aria-label="Circuit guide">
+        <button className="sidebar-toggle" onClick={() => setSidebarOpen((open) => !open)}
+          aria-expanded={sidebarOpen} aria-label={sidebarOpen ? "Close circuit guide" : "Open circuit guide"}
+          title={sidebarOpen ? "Close circuit guide" : "Open circuit guide"}>
+          <span aria-hidden="true">{sidebarOpen ? "‹" : "›"}</span>
+          {!sidebarOpen && <span className="sidebar-toggle-label">Guide</span>}
+        </button>
+        <div className="panel-content">
         <header>
           <h1>{plan.title}</h1>
           <p className="summary">{plan.summary}</p>
@@ -453,6 +466,7 @@ export default function App() {
           })}
         </section>
         <SiteFooter compact />
+        </div>
       </aside>
 
       <main className={`stage ${mode === "plan" ? "plan-stage" : ""}`}
@@ -473,6 +487,8 @@ export default function App() {
         <Scene plan={plan} step={step} exploded={exploded}
                mode={mode} world={world} guidance={guidance} labels={labels}
                kitParts={kitParts} selectedKitPart={selectedKitPart}
+               simulation={{ running: simulationRunning, powered: simulationPowered, rate: simulationRate,
+                 includedIds: simulationIncluded }}
                onSelectKitPart={setSelectedKitPart}
                onMoveKitPart={(id, position) => setKitParts((items) => items.map((item) =>
                  item.instanceId === id ? { ...item, position } : item))}
@@ -503,7 +519,64 @@ export default function App() {
           <>
             <ComponentsDrawer open={componentsOpen} onToggle={() => setComponentsOpen((value) => !value)}
               count={kitParts.length} />
-            {kitParts.length > 0 && (
+            <button className={`simulation-trigger ${simulationRunning ? "running" : ""}`}
+              disabled={kitParts.length === 0}
+              onClick={() => {
+                setComponentsOpen(false);
+                setSelectedKitPart(null);
+                setSimulationRunning((running) => {
+                  if (running) setSimulationDetailsOpen(false);
+                  if (!running) setSimulationIncluded((included) => included.length
+                    ? included.filter((id) => kitParts.some((part) => part.instanceId === id))
+                    : kitParts.filter((part) => part.shape !== "wire").map((part) => part.instanceId));
+                  return !running;
+                });
+              }}>
+              <span aria-hidden="true">{simulationRunning ? "■" : "▶"}</span>
+              {simulationRunning ? "Stop simulation" : "Play simulation"}
+            </button>
+            {simulationRunning && <button className={`simulation-more ${simulationDetailsOpen ? "on" : ""}`}
+              onClick={() => setSimulationDetailsOpen((open) => !open)}
+              aria-expanded={simulationDetailsOpen} aria-controls="simulation-details"
+              aria-label={simulationDetailsOpen ? "Hide simulation details" : "Show simulation details"}
+              data-tooltip={simulationDetailsOpen ? "Hide details" : "Show more"}>•••</button>}
+            {simulationRunning && simulationDetailsOpen && (
+              <aside className="simulation-panel" id="simulation-details" aria-label="Simulation settings">
+                <div className="simulation-status"><span className={simulationPowered ? "live" : ""} />
+                  <strong>{simulationPowered ? "Preview running" : "Power paused"}</strong>
+                </div>
+                <label><span>Behavior speed</span><output>{simulationRate.toFixed(1)}×</output>
+                  <input type="range" aria-label="Simulation speed" min="0.25" max="2" step="0.25" value={simulationRate}
+                    onChange={(event) => setSimulationRate(Number(event.target.value))} />
+                </label>
+                <button className="simulation-power" onClick={() => setSimulationPowered((powered) => !powered)}>
+                  {simulationPowered ? "Pause power" : "Resume power"}
+                </button>
+                <div className="simulation-parts">
+                  <div className="simulation-parts-heading">
+                    <strong>Parts on your workbench</strong>
+                    <span>{simulationIncluded.length} active</span>
+                  </div>
+                  {kitParts.filter((part) => part.shape !== "wire").map((part) => {
+                    const connected = kitParts.some((wire) => wire.shape === "wire"
+                      && (wire.wireStartTarget === part.instanceId || wire.wireEndTarget === part.instanceId));
+                    return <label key={part.instanceId} className="simulation-part-row">
+                      <input type="checkbox" checked={simulationIncluded.includes(part.instanceId)}
+                        onChange={(event) => setSimulationIncluded((included) => event.target.checked
+                          ? [...included, part.instanceId]
+                          : included.filter((id) => id !== part.instanceId))} />
+                      <span><strong>{part.name}</strong><small>{connected ? "Connected by jumper wire" : "Placed · no targeted wire"}</small></span>
+                      <i className={connected ? "connected" : ""} title={connected ? "Connected" : "Not connected"} />
+                    </label>;
+                  })}
+                  {kitParts.filter((part) => part.shape !== "wire").length === 0
+                    && <p className="simulation-empty">Add a board or component to preview it.</p>}
+                </div>
+                <p><strong>Behavior preview</strong> animates every checked part and shows a moving signal on included wires while preserving the plan.</p>
+                <p className="simulation-caveat">Electrical accuracy is unavailable until components have pin-level connections and Arduino code.</p>
+              </aside>
+            )}
+            {kitParts.length > 0 && !simulationRunning && (
               <div className="part-actions">
                 <span>{selectedKitPart ? "Part selected" : `${kitParts.length} placed`}</span>
                 <button disabled={!selectedKitPart} onClick={() => setKitParts((items) => items.map((item) =>

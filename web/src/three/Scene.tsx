@@ -7,7 +7,7 @@ import { WorldLayer } from "./World";
 import type { Plan } from "../lib/types";
 import type { World } from "../lib/world";
 import type { Guidance } from "../lib/guidance";
-import { KitPartsLayer, type PlacedKitPart } from "../components/StarterKit";
+import { KitPartsLayer, type PlacedKitPart, type SimulationState } from "../components/StarterKit";
 import { useState } from "react";
 
 /**
@@ -20,6 +20,7 @@ export type ViewMode = "plan" | "live";
 
 export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
+  simulation = { running: false, powered: true, rate: 1, includedIds: [] },
   onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {},
 }: {
   plan: Plan;
@@ -30,6 +31,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   guidance: Guidance;
   labels: boolean;
   kitParts?: PlacedKitPart[];
+  simulation?: SimulationState;
   selectedKitPart?: string | null;
   onSelectKitPart?: (id: string | null) => void;
   onMoveKitPart?: (id: string, position: [number, number, number]) => void;
@@ -86,6 +88,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
 
         {mode === "plan" && (
           <KitPartsLayer parts={kitParts} selectedId={selectedKitPart}
+            simulation={simulation}
             onSelect={onSelectKitPart} onMove={onMoveKitPart} onDelete={onDeleteKitPart}
             onWireChange={onWireChange} onInteractionChange={setFocusedMove} />
         )}
