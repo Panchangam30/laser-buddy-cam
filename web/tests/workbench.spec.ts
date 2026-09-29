@@ -44,7 +44,7 @@ test.describe("3D planning workbench", () => {
 
   test("opens the starter kit and places components", async ({ page }) => {
     await page.getByRole("button", { name: /Components/ }).click();
-    await expect(page.locator(".component-card")).toHaveCount(29);
+    await expect(page.locator(".component-card")).toHaveCount(32);
 
     await page.locator(".component-card").filter({ hasText: "Arduino Uno R3" }).click();
     await page.locator(".component-card").filter({ hasText: "Jumper Wire" }).click();
@@ -53,14 +53,39 @@ test.describe("3D planning workbench", () => {
     await expect(page.locator(".part-actions")).toContainText("Part selected");
   });
 
-  test("waits three seconds before showing component help", async ({ page }) => {
+  test("starts, configures, stops, and restarts simulation without losing the plan", async ({ page }) => {
+    const play = page.getByRole("button", { name: "Play simulation" });
+    await expect(play).toBeDisabled();
+    await page.getByRole("button", { name: /Components/ }).click();
+    await page.locator(".component-card").filter({ hasText: "Red LED" }).click();
+    await play.click();
+    await expect(page.getByRole("button", { name: "Stop simulation" })).toBeVisible();
+    await expect(page.getByLabel("Simulation settings")).toHaveCount(0);
+    await page.getByRole("button", { name: "Show simulation details" }).click();
+    await expect(page.getByLabel("Simulation settings")).toContainText("Electrical accuracy is unavailable");
+    await expect(page.getByLabel("Simulation settings")).toContainText("Red LED");
+    await expect(page.getByLabel("Simulation settings").getByRole("checkbox")).toBeChecked();
+    await page.getByLabel("Simulation settings").getByRole("checkbox").uncheck();
+    await expect(page.getByLabel("Simulation settings")).toContainText("0 active");
+    await page.getByLabel("Simulation settings").getByRole("checkbox").check();
+    await page.getByLabel("Simulation speed").fill("1.5");
+    await page.getByRole("button", { name: "Pause power" }).click();
+    await page.getByRole("button", { name: "Stop simulation" }).click();
+    await expect(page.getByRole("button", { name: "Show simulation details" })).toHaveCount(0);
+    await expect(page.locator(".component-count")).toHaveText("1");
+    await page.getByRole("button", { name: "Play simulation" }).click();
+    await page.getByRole("button", { name: "Show simulation details" }).click();
+    await expect(page.getByRole("button", { name: "Resume power" })).toBeVisible();
+  });
+
+  test("shows component help without a long hover delay", async ({ page }) => {
     await page.getByRole("button", { name: /Components/ }).click();
     const card = page.locator(".component-card").first();
     const tooltip = card.locator(".component-tooltip");
 
     await card.hover();
     await expect(tooltip).toHaveCSS("opacity", "0");
-    await page.waitForTimeout(3_150);
+    await page.waitForTimeout(500);
     await expect(tooltip).toHaveCSS("opacity", "1");
   });
 
@@ -113,6 +138,13 @@ test.describe("3D planning workbench", () => {
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "Verified goal project" })).toBeVisible();
+  });
+
+  test("can collapse and reopen the circuit guide", async ({ page }) => {
+    await page.getByRole("button", { name: "Close circuit guide" }).click();
+    await expect(page.locator(".app")).toHaveClass(/sidebar-collapsed/);
+    await page.getByRole("button", { name: "Open circuit guide" }).click();
+    await expect(page.locator(".app")).not.toHaveClass(/sidebar-collapsed/);
   });
 
   test("links to documentation and the public project", async ({ page }) => {

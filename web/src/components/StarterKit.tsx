@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SURFACE_Y, snapToHole } from "../lib/breadboard";
@@ -14,6 +14,8 @@ export type KitShape =
   | "board" | "breadboard" | "led" | "resistor" | "button" | "knob"
   | "sensor" | "motor" | "servo" | "display" | "battery" | "buzzer"
   | "relay" | "ic" | "capacitor" | "transistor" | "wire" | "remote";
+
+const HOVER_HELP_DELAY_MS = 350;
 
 export type KitPartDefinition = {
   id: string;
@@ -32,6 +34,8 @@ export type PlacedKitPart = KitPartDefinition & {
   wireStartTarget?: string;
   wireEndTarget?: string;
 };
+
+export type SimulationState = { running: boolean; powered: boolean; rate: number; includedIds: string[] };
 
 export const STARTER_KIT_PARTS: KitPartDefinition[] = [
   { id: "uno-r3", name: "Arduino Uno R3", category: "Boards", shape: "board", color: "#087f8c" },
@@ -63,6 +67,9 @@ export const STARTER_KIT_PARTS: KitPartDefinition[] = [
   { id: "jumper-wire", name: "Jumper Wire", category: "Connectors", shape: "wire", color: "#f59e0b" },
   { id: "battery-snap", name: "9V Battery", category: "Power", shape: "battery", color: "#111827" },
   { id: "ir-remote", name: "IR Remote", category: "Input", shape: "remote", color: "#242424" },
+  { id: "joystick", name: "Analog Joystick", category: "Input", shape: "knob", color: "#2563eb" },
+  { id: "soil-sensor", name: "Soil Moisture Sensor", category: "Sensors", shape: "sensor", color: "#15803d" },
+  { id: "neopixel", name: "NeoPixel Ring", category: "Output", shape: "led", color: "#f8fafc" },
 ];
 
 const PART_HELP: Record<string, string> = {
@@ -95,6 +102,9 @@ const PART_HELP: Record<string, string> = {
   "jumper-wire": "Makes a removable electrical connection between breadboard rows, modules, and Arduino pins.",
   "battery-snap": "Portable 9V supply. Connect through VIN or a regulator and never reverse polarity.",
   "ir-remote": "Sends digitally encoded infrared light; an IR receiver module decodes each button press.",
+  joystick: "Two potentiometers report X/Y position while the shaft also acts as a push button.",
+  "soil-sensor": "Estimates soil moisture from conductivity. Use short readings to reduce probe corrosion.",
+  neopixel: "Individually addressable RGB LEDs share one data wire and can display animated colors.",
 };
 
 /**
@@ -155,7 +165,7 @@ export function ComponentsDrawer({ open, onToggle, count }: {
             <button onClick={onToggle} aria-label="Close component library">×</button>
           </div>
           <input className="component-search" value={query}
-                 onChange={(event) => setQuery(event.target.value)} placeholder="Search 29 components…" />
+                 onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${STARTER_KIT_PARTS.length} components…`} />
           <div className="component-grid">
             {shown.map((part) => (
               <button key={part.id} className="component-card" draggable
@@ -193,7 +203,8 @@ function PartPreview({ part }: { part: KitPartDefinition }) {
 }
 
 export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
-  onWireChange = () => {}, onInteractionChange = () => {} }: {
+  onWireChange = () => {}, onInteractionChange = () => {},
+  simulation = { running: false, powered: true, rate: 1, includedIds: [] } }: {
   parts: PlacedKitPart[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -201,6 +212,7 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
   onDelete: (id: string) => void;
   onWireChange?: (id: string, end: "start" | "end", position: [number, number, number], target?: string) => void;
   onInteractionChange?: (active: boolean) => void;
+  simulation?: SimulationState;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -209,7 +221,7 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
 
   useEffect(() => {
     if (!hoverCandidate || dragging || wireDrag) { setHovered(null); return; }
-    const timer = window.setTimeout(() => setHovered(hoverCandidate), 3000);
+    const timer = window.setTimeout(() => setHovered(hoverCandidate), HOVER_HELP_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [hoverCandidate, dragging, wireDrag]);
 
@@ -244,7 +256,7 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
 
   return (
     <group>
-      <mesh position={[0, 5.6, 0]} rotation={[-Math.PI / 2, 0, 0]}
+      {!simulation.running && <mesh position={[0, 5.6, 0]} rotation={[-Math.PI / 2, 0, 0]}
         onPointerMove={(event) => {
           if (wireDrag) {
             event.stopPropagation();
@@ -270,8 +282,8 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
         }} onPointerMissed={() => { setDragging(null); setWireDrag(null); onInteractionChange(false); }}>
         <planeGeometry args={[190, 120]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-      {wireSelected && parts.filter((part) => part.shape !== "wire").map((part) => (
+      </mesh>}
+      {!simulation.running && wireSelected && parts.filter((part) => part.shape !== "wire").map((part) => (
         <group key={`port-${part.instanceId}`} position={part.position}>
           <mesh position={[0, 5, 0]}>
             <sphereGeometry args={[1.25, 14, 10]} />
@@ -282,13 +294,15 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
       {parts.filter((part) => part.shape !== "wire").map((part) => (
         <group key={part.instanceId} position={part.position} rotation={[0, part.rotation, 0]}
           onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+            if (simulation.running) return;
             event.stopPropagation(); onSelect(part.instanceId); setDragging(part.instanceId);
             setHovered(null); onInteractionChange(true);
           }}
           onPointerOver={(event: ThreeEvent<PointerEvent>) => { event.stopPropagation(); setHoverCandidate(part.instanceId); }}
           onPointerOut={() => { setHoverCandidate((id) => id === part.instanceId ? null : id); setHovered((id) => id === part.instanceId ? null : id); }}
-          onDoubleClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onDelete(part.instanceId); }}>
-          <KitPartModel part={part} selected={selectedId === part.instanceId} />
+          onDoubleClick={(event: ThreeEvent<MouseEvent>) => { if (!simulation.running) { event.stopPropagation(); onDelete(part.instanceId); } }}>
+          <SimulatedPart part={part} selected={selectedId === part.instanceId} simulation={simulation}
+            included={simulation.includedIds.includes(part.instanceId)} />
           {hovered === part.instanceId && !dragging && (
             <Html position={[0, 15, 0]} center zIndexRange={[12, 0]}>
               <div className="canvas-part-label"><strong>{part.name}</strong><span>{partHelp(part)}</span></div>
@@ -306,13 +320,17 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
           ? [endTarget.position[0], endTarget.position[1] + 4, endTarget.position[2]] as [number, number, number]
           : part.wireEnd ?? [part.position[0] + 8, 7.5, part.position[2]];
         return <JumperWire key={part.instanceId} part={part} start={start} end={end}
-          selected={selectedId === part.instanceId} hovered={hovered === part.instanceId}
-          onSelect={() => onSelect(part.instanceId)}
+          simulation={simulation} included={simulation.includedIds.includes(part.instanceId)
+            || (!!part.wireStartTarget && simulation.includedIds.includes(part.wireStartTarget))
+            || (!!part.wireEndTarget && simulation.includedIds.includes(part.wireEndTarget))}
+          selected={!simulation.running && selectedId === part.instanceId} hovered={!simulation.running && hovered === part.instanceId}
+          onSelect={() => { if (!simulation.running) onSelect(part.instanceId); }}
           onHover={(value) => {
             setHoverCandidate(value ? part.instanceId : null);
             if (!value) setHovered((id) => id === part.instanceId ? null : id);
           }}
           onDragEnd={(endName) => {
+            if (simulation.running) return;
             onSelect(part.instanceId); setWireDrag({ id: part.instanceId, end: endName });
             setHovered(null); onInteractionChange(true);
           }} />;
@@ -321,7 +339,44 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
   );
 }
 
-function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, onDragEnd }: {
+function SimulatedPart({ part, selected, simulation, included }: {
+  part: KitPartDefinition; selected: boolean; simulation: SimulationState; included: boolean;
+}) {
+  const group = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    const active = simulation.running && simulation.powered && included;
+    const phase = clock.elapsedTime * simulation.rate;
+    const wave = Math.sin(phase * Math.PI * 2);
+    group.current.scale.setScalar(active && (["led", "buzzer", "relay", "capacitor"] as KitShape[]).includes(part.shape)
+      ? 1 + Math.max(0, wave) * .1 : 1);
+    group.current.position.y = active && (["sensor", "button", "transistor", "ic", "display", "breadboard"] as KitShape[]).includes(part.shape)
+      ? Math.max(0, wave) * .35 : 0;
+    group.current.rotation.y = active && part.shape === "motor" ? phase * 3
+      : active && (part.shape === "knob" || part.shape === "remote") ? Math.sin(phase) * .12 : 0;
+    group.current.rotation.z = active && part.shape === "servo" ? Math.sin(phase * 2) * .3
+      : active && part.shape === "resistor" ? wave * .025 : 0;
+  });
+
+  const active = simulation.running && simulation.powered && included;
+  const lit = active && part.shape === "led";
+  const boardActive = active && part.shape === "board";
+  return <group ref={group}>
+    <KitPartModel part={part} selected={selected || lit || boardActive} />
+    {lit && <pointLight position={[0, 6, 0]} color={part.color} intensity={2.2} distance={22} />}
+    {boardActive && <group position={[8, 3.4, -8]}>
+      <pointLight color="#4ade80" intensity={1.8} distance={18} />
+      <mesh><sphereGeometry args={[.8, 12, 8]} /><meshBasicMaterial color="#6dff9b" /></mesh>
+    </group>}
+    {active && !lit && !boardActive && <mesh position={[0, .15, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[5.5, 6, 28]} />
+      <meshBasicMaterial color="#4ade80" transparent opacity={.28} depthWrite={false} />
+    </mesh>}
+  </group>;
+}
+
+function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, onDragEnd,
+  simulation, included }: {
   part: PlacedKitPart;
   start: [number, number, number];
   end: [number, number, number];
@@ -330,20 +385,35 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
   onSelect: () => void;
   onHover: (value: boolean) => void;
   onDragEnd: (end: "start" | "end") => void;
+  simulation: SimulationState;
+  included: boolean;
 }) {
-  const geometry = useMemo(() => {
+  const wire = useMemo(() => {
     const a = new THREE.Vector3(...start);
     const b = new THREE.Vector3(...end);
-    const middle = a.clone().add(b).multiplyScalar(.5);
-    middle.y += Math.min(8 + a.distanceTo(b) * .14, 24);
-    return new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(a, middle, b), 32, .65, 9, false);
-  }, [start[0], start[1], start[2], end[0], end[1], end[2]]);
+    const distance = a.distanceTo(b);
+    const lift = Math.min(7 + distance * .13, 23);
+    const direction = b.clone().sub(a);
+    const side = new THREE.Vector3(-direction.z, 0, direction.x).normalize().multiplyScalar(Math.min(distance * .045, 2.2));
+    const curve = new THREE.CatmullRomCurve3([
+      a, a.clone().lerp(b, .18).add(new THREE.Vector3(0, lift * .72, 0)).add(side),
+      a.clone().lerp(b, .5).add(new THREE.Vector3(0, lift, 0)),
+      a.clone().lerp(b, .82).add(new THREE.Vector3(0, lift * .72, 0)).sub(side), b,
+    ], false, "centripetal", .35);
+    return { curve, outer: new THREE.TubeGeometry(curve, 48, .72, 12, false),
+      highlight: new THREE.TubeGeometry(curve, 48, .18, 7, false) };
+  }, [start, end]);
 
   return <group onPointerOver={(event) => { event.stopPropagation(); onHover(true); }} onPointerOut={() => onHover(false)}>
-    <mesh geometry={geometry} castShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
+    <mesh geometry={wire.outer} castShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
       <meshStandardMaterial color={part.color} roughness={.38}
         emissive={selected ? "#ffcc00" : part.color} emissiveIntensity={selected ? .3 : .08} />
     </mesh>
+    <mesh geometry={wire.highlight} position={[0, .5, 0]}>
+      <meshBasicMaterial color="#fff" transparent opacity={.2} depthWrite={false} />
+    </mesh>
+    <WireSignal curve={wire.curve} active={simulation.running && simulation.powered && included}
+      rate={simulation.rate} color={part.color} />
     {(["start", "end"] as const).map((endName) => {
       const point = endName === "start" ? start : end;
       return <group key={endName} position={point}>
@@ -351,14 +421,33 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
           <sphereGeometry args={[selected ? 1.8 : 1.25, 16, 12]} />
           <meshStandardMaterial color={selected ? "#ffcc00" : "#d5d8dc"} metalness={.65} roughness={.25} />
         </mesh>
-        <mesh position={[0, -1.4, 0]}><cylinderGeometry args={[.8, .8, 2.2, 10]} />
-          <meshStandardMaterial color="#aeb4ba" metalness={.8} /></mesh>
+        <mesh position={[0, -1.25, 0]}><cylinderGeometry args={[1.2, .92, 2.8, 14]} />
+          <meshStandardMaterial color={part.color} roughness={.42} /></mesh>
+        <mesh position={[0, -.2, 0]}><torusGeometry args={[.91, .16, 7, 14]} />
+          <meshStandardMaterial color="#17191d" roughness={.7} /></mesh>
+        <mesh position={[0, -2.8, 0]}><cylinderGeometry args={[.58, .58, 1.3, 10]} />
+          <meshStandardMaterial color="#d7dadd" metalness={.9} roughness={.18} /></mesh>
       </group>;
     })}
     {hovered && <Html position={[(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + 14, (start[2] + end[2]) / 2]} center>
       <div className="canvas-part-label"><strong>Jumper wire</strong><span>Drag either glowing end onto a yellow component connection point.</span></div>
     </Html>}
   </group>;
+}
+
+function WireSignal({ curve, active, rate, color }: {
+  curve: THREE.Curve<THREE.Vector3>; active: boolean; rate: number; color: string;
+}) {
+  const pulse = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!pulse.current) return;
+    pulse.current.visible = active;
+    if (active) pulse.current.position.copy(curve.getPoint((clock.elapsedTime * rate * .38) % 1));
+  });
+  return <mesh ref={pulse} visible={false}>
+    <sphereGeometry args={[1.05, 12, 9]} />
+    <meshBasicMaterial color={color} toneMapped={false} />
+  </mesh>;
 }
 
 /**
