@@ -14,6 +14,7 @@ firmware shape this file:
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -109,7 +110,7 @@ class LaserLink:
             self.error = "pyserial is not installed. Run: pip install -r requirements.txt"
             return False
         self.disconnect()
-        target = port or self.port or find_port()
+        target = port or self._best_port()
         if not target:
             self.error = "No Arduino found. Check the USB cable."
             return False
@@ -163,6 +164,23 @@ class LaserLink:
         self._parse_pose(self.banner)
         self._start_keepalive()
         return True
+
+    def _best_port(self) -> str | None:
+        """The port to try, preferring the one that worked last time.
+
+        Only if it still exists. macOS names the device after the USB socket it
+        is in, so replugging the board into a different port of a hub brings it
+        back as a different file -- cu.usbmodem1101 becomes cu.usbmodem1201.
+        Remembering the old name without checking means every later connect
+        retries a path that is gone, reporting a missing file while the board
+        sits there working on the port right next to it.
+        """
+        if self.port and os.path.exists(self.port):
+            return self.port
+        found = find_port()
+        if found and found != self.port:
+            self.port = None          # the remembered one is stale; let it go
+        return found
 
     def disconnect(self) -> None:
         self._stop.set()
