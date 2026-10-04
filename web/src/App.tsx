@@ -10,8 +10,8 @@ import { analyseFrame, resetWorld, setOrientation, EMPTY_WORLD, type World } fro
 import { reconcile, guidanceText } from "./lib/guidance";
 import { PITCH, holePosition } from "./lib/breadboard";
 import {
-  pointAtLocation, moveLaser, nudgeLaser, setLaserPower, laserCentre, laserConnect,
-  laserStatus, type Direction, type NudgeSize,
+  pointAt, pointAtLocation, moveLaser, nudgeLaser, setLaserPower, laserCentre,
+  laserConnect, laserStatus, laserOff, type Direction, type NudgeSize,
 } from "./lib/laser";
 import { anchorLocation, locationLabel } from "./lib/workspace";
 import type { Project } from "./lib/types";
@@ -247,6 +247,44 @@ export default function App() {
     timer = window.setTimeout(tick, 0);
     return () => { stopped = true; window.clearTimeout(timer); };
   }, [tracking]);
+
+  /**
+   * Act on commands from the phone remote.
+   *
+   * Polled rather than pushed: a websocket would be the tidier answer, but this
+   * is one small GET every couple of seconds on a LAN, and it keeps the vision
+   * service a plain request/response HTTP server with no connection state.
+   *
+   * These have to run here, in the tab, because this is where the webcam is --
+   * the service cannot start a scan or board tracking on its own.
+   */
+  useEffect(() => {
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const r = await fetch("/api/vision/remote");
+        if (!r.ok) return;
+        const { commands } = (await r.json()) as { commands?: { command: string }[] };
+        for (const { command } of commands ?? []) {
+          if (stopped) return;
+          if (command === "start") { setTracking(true); setVisionErr(""); }
+          if (command === "stop") { setTracking(false); laserOff().catch(() => {}); }
+          if (command === "scan") {
+            const frame = grabRef.current?.();
+            if (frame) await onCapture(frame);
+          }
+          if (command === "point") {
+            const hole = guidanceRef.current.focus.holes[0];
+            if (hole) await pointAt(hole).catch(() => {});
+          }
+        }
+      } catch {
+        /* the service may be down; its own panel already says so */
+      }
+    };
+    const id = window.setInterval(tick, 2000);
+    return () => { stopped = true; window.clearInterval(id); };
+  }, []);
 
   const startTracking = useCallback(() => {
     setVisionErr("");

@@ -76,6 +76,11 @@ class VisionEngine:
         self._frame_at = 0.0
         self._aimed_at: tuple[float, float] | None = None
         self._aimed_hole = ""
+        #: Commands posted by the phone remote, waiting for the Mac's browser
+        #: tab to collect them. A queue rather than a direct call because the
+        #: things worth starting -- board tracking above all -- run in that tab,
+        #: where the webcam is. The service cannot start them on its own.
+        self._remote: list[dict] = []
         self.flipped = False
         self.orientation_source = "assumed"
         self._lock = threading.Lock()
@@ -272,6 +277,35 @@ class VisionEngine:
             self._aimed_at = None
             self._aimed_hole = ""
         return {"ok": ok}
+
+    # ------------------------------------------------------------------ remote
+
+    #: Commands that cancel each other. Start and Stop are one switch, so a new
+    #: one replaces any pending either way: de-duplicating by name alone let a
+    #: stale Stop and a fresh Start sit in the queue together, and whichever ran
+    #: last decided the outcome -- tap Start, get stopped.
+    _EXCLUSIVE = {"start": {"start", "stop"}, "stop": {"start", "stop"}}
+
+    def push_remote(self, command: str, args: dict | None = None) -> dict:
+        """Queue a command from the remote."""
+        with self._lock:
+            # One of each pending at a time: tapping Start three times because
+            # nothing visibly happened should not start three scans.
+            drop = self._EXCLUSIVE.get(command, {command})
+            self._remote = [c for c in self._remote if c["command"] not in drop]
+            self._remote.append({"command": command, "args": args or {},
+                                 "at": round(time.time(), 3)})
+            return {"ok": True, "queued": len(self._remote)}
+
+    def take_remote(self) -> dict:
+        """Hand over everything queued, and clear it."""
+        with self._lock:
+            out, self._remote = self._remote, []
+            # Anything older than this was queued before the tab was listening,
+            # and acting on it now would be surprising rather than helpful --
+            # a Stop from a minute ago is not what anyone means by Start.
+            fresh = [c for c in out if time.time() - c["at"] < 12]
+            return {"commands": fresh}
 
     def laser_status(self) -> dict:
         return {**self.laser.status(),
@@ -482,6 +516,8 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.snapshot())
             if path == "/vision/laser":
                 return self._json(200, engine.laser_status())
+            if path == "/vision/remote":
+                return self._json(200, engine.take_remote())
             if path == "/vision/debug.jpg":
                 view = "frame" if "view=frame" in query else "rect"
                 img = engine.debug_image(view)
@@ -513,6 +549,12 @@ def make_handler(engine: VisionEngine):
 
             if self.path == "/vision/orientation":
                 return self._json(200, engine.set_flipped(bool(body.get("flipped"))))
+
+            if self.path == "/vision/remote":
+                cmd = str(body.get("command", "")).strip()
+                if not cmd:
+                    return self._json(400, {"error": "no command"})
+                return self._json(200, engine.push_remote(cmd, body.get("args")))
 
             if self.path == "/vision/laser/connect":
                 ok = engine.laser.connect(body.get("port") or None)

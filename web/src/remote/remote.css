@@ -1,0 +1,325 @@
+/* Phone remote. Sized for a thumb at arm's length from the bench, which is the
+   only place it will ever be used: targets big enough to hit without looking,
+   and a readout legible from across the desk. */
+
+.remote {
+  min-height: 100dvh;
+  display: grid; grid-template-rows: auto 1fr auto;
+  background: var(--chassis, #16181b);
+  color: var(--ink, #eceef0);
+  font-family: var(--sans, ui-sans-serif, system-ui, sans-serif);
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.remote header {
+  padding: max(26px, env(safe-area-inset-top)) 20px 14px;
+}
+.remote header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -.015em; }
+.remote .link { margin: 0; font-size: 13.5px; color: var(--ink-dim, #969ca4); }
+.remote .link.bad { color: var(--rail-red-ink, #e8675c); }
+
+.remote main {
+  padding: 0 20px 16px;
+  display: flex; flex-direction: column; gap: 18px;
+  overflow-y: auto;
+}
+/* The pad sits in the middle of the free space rather than at the top: held
+   one-handed, the thumb rests near the centre of the screen, not under the
+   title. */
+.remote main:has(.pad) { justify-content: center; gap: 22px; }
+
+.remote .num { font-family: var(--mono, ui-monospace, monospace); }
+
+/* --- bench ---------------------------------------------------------------- */
+
+.remote .go {
+  width: 100%; min-height: 124px; border: 0; border-radius: 28px;
+  background: var(--signal, #e8b33a); color: var(--signal-ink, #1a1403);
+  font: 600 26px/1 var(--sans, system-ui); letter-spacing: -.02em;
+  transition: transform .08s ease, filter .12s ease;
+}
+.remote .go:active { transform: scale(.985); filter: brightness(.94); }
+.remote .go:disabled { opacity: .4; }
+
+.remote .readout { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.remote .readout div {
+  background: var(--panel, #1c1f23); border: 1px solid var(--rule, #2b2f35);
+  border-radius: 16px; padding: 14px 12px; text-align: center;
+}
+.remote .readout b { display: block; font-size: 19px; font-weight: 600; }
+.remote .readout span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--ink-dim, #969ca4); }
+
+.remote .keys { display: flex; flex-direction: column; gap: 9px; }
+.remote .keys button {
+  /* Comfortably past the 44pt iOS target, and reachable one-handed. */
+  min-height: 56px; width: 100%; border-radius: 18px; padding: 0 20px;
+  background: var(--panel, #1c1f23); border: 1px solid var(--rule, #2b2f35);
+  color: var(--ink, #eceef0); font: 500 16px/1 var(--sans, system-ui);
+  text-align: left; transition: background .12s ease;
+}
+.remote .keys button:active:not(:disabled) { background: var(--raised, #23272c); }
+.remote .keys button:disabled { opacity: .35; }
+
+/* --- aim pad -------------------------------------------------------------- */
+
+/* Wide rather than tall: the pad gets the full width of the screen, so each
+   key is a large landscape target instead of a small square, and left/right --
+   the axis with the most travel -- are the widest keys on it. */
+.remote .pad {
+  display: grid; gap: 8px;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  grid-template-areas: ". up ." "left beam right" ". down .";
+}
+.pad-up { grid-area: up; } .pad-down { grid-area: down; }
+.pad-left { grid-area: left; } .pad-right { grid-area: right; }
+.pad-beam { grid-area: beam; }
+
+.remote .pad > button {
+  min-height: 84px; border-radius: 20px;
+  background: var(--panel, #1c1f23); border: 1px solid var(--rule, #2b2f35);
+  color: var(--ink, #eceef0); font-size: 28px; line-height: 1;
+  /* Holding a direction must not scroll the page under the thumb. */
+  touch-action: none;
+  transition: background .1s ease, transform .07s ease, border-color .12s ease;
+}
+.remote .pad > button:active:not(:disabled) {
+  background: var(--signal, #e8b33a); color: var(--signal-ink, #1a1403);
+  border-color: var(--signal, #e8b33a); transform: scale(.97);
+}
+.remote .pad > button:disabled { opacity: .3; }
+
+/* The beam key. Red and pulsing while live, so you can tell something on the
+   bench is lit from across the room rather than reading a label. */
+.remote .pad-beam {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; font-size: 13px !important;
+}
+.remote .pad-beam-dot {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--ink-faint, #828891);
+}
+.remote .pad-beam-text { font: 500 13px/1 var(--sans, system-ui); color: var(--ink-dim, #969ca4); }
+.remote .pad-beam.on {
+  border-color: color-mix(in srgb, var(--rail-red-ink, #e8675c), transparent 50%);
+  background: color-mix(in srgb, var(--rail-red-ink, #e8675c), transparent 90%);
+}
+.remote .pad-beam.on .pad-beam-dot {
+  background: var(--rail-red-ink, #e8675c);
+  animation: beampulse 1.6s ease-in-out infinite;
+}
+.remote .pad-beam.on .pad-beam-text { color: var(--rail-red-ink, #e8675c); }
+.remote .pad-beam:active:not(:disabled) { transform: scale(.97); }
+@keyframes beampulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+
+/* Named so it cannot collide: App.css owns `.steps` for the sidebar's assembly
+   list and sets flex-direction: column there, and that file loads on every
+   route. A shared name silently stacked these three options vertically. */
+.remote .stepsize {
+  display: flex; flex-direction: row; gap: 3px; padding: 3px;
+  background: var(--panel, #1c1f23); border: 1px solid var(--rule, #2b2f35);
+  border-radius: 999px;
+}
+.remote .stepsize button {
+  flex: 1; min-width: 0; display: flex; align-items: baseline;
+  justify-content: center; gap: 6px; white-space: nowrap;
+  border: 0; background: transparent; border-radius: 999px;
+  padding: 12px 8px; font: 500 14px/1 var(--sans, system-ui);
+  color: var(--ink-dim, #969ca4); transition: background .12s ease, color .12s ease;
+}
+.remote .stepsize button small {
+  font-family: var(--mono, ui-monospace, monospace); font-size: 11px;
+  color: var(--ink-faint, #828891);
+}
+.remote .stepsize button.on { background: var(--raised, #23272c); color: var(--ink, #eceef0); }
+.remote .stepsize button.on small { color: var(--ink-dim, #969ca4); }
+
+.remote .hold-hint {
+  margin: -6px 0 0; text-align: center;
+  font-size: 12.5px; color: var(--ink-faint, #828891);
+}
+
+/* --- shared --------------------------------------------------------------- */
+
+.remote .note {
+  margin: 0; font-size: 13.5px; line-height: 1.5;
+  color: var(--ink, #eceef0); padding-left: 12px;
+  border-left: 2px solid var(--signal, #e8b33a);
+}
+.remote .note.quiet { color: var(--ink-dim, #969ca4); border-left-color: var(--rule, #2b2f35); }
+
+/* Tabs at the bottom, where a thumb already is -- the iOS convention, and the
+   reason is the same here: this is used one-handed at a bench. */
+.remote .tabbar {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding: 8px 20px max(14px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--rule, #2b2f35);
+  background: var(--panel, #1c1f23);
+}
+.remote .tabbar button {
+  min-height: 48px; border: 0; border-radius: 14px; background: transparent;
+  color: var(--ink-dim, #969ca4); font: 500 15px/1 var(--sans, system-ui);
+  transition: background .12s ease, color .12s ease;
+}
+.remote .tabbar button.on { background: var(--raised, #23272c); color: var(--ink, #eceef0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .remote *, .remote *::before { transition: none !important; animation: none !important; }
+}
+
+/* ==========================================================================
+   The reticle.
+
+   The remote's one control is a targeting reticle, because what it starts is a
+   laser that aims at holes. Pressing it locks on: the segmented ring spins
+   into line, the crosshair and inner ring close in, a shockwave goes out, and
+   the centre ignites as the dot. Everything else on screen stays still so that
+   one moment reads.
+   ========================================================================== */
+
+.scope {
+  --tone: #e8b33a;                         /* armed: "what to do next" */
+  --tone-soft: rgba(232, 179, 58, .16);
+  min-height: 100dvh;
+  display: grid; place-items: center; align-content: center; gap: 26px;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  font-family: var(--sans, ui-sans-serif, system-ui, sans-serif);
+  color: var(--ink, #eceef0);
+  background-color: #0f1113;
+  /* A faint field of holes at the breadboard's own pitch, fading out towards the
+     edges: the reticle is aiming at a board, so it sits on one. */
+  background-image:
+    radial-gradient(circle at 50% 46%, var(--tone-soft) 0%, transparent 46%),
+    radial-gradient(circle, rgba(255, 255, 255, .07) 1.1px, transparent 1.6px);
+  background-size: 100% 100%, 22px 22px;
+  background-position: center, center;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color .5s ease;
+}
+.scope.live {
+  --tone: #ff5a4a;                         /* live: the beam is on */
+  --tone-soft: rgba(255, 90, 74, .2);
+}
+
+.reticle {
+  position: relative;
+  width: min(84vw, 360px); aspect-ratio: 1;
+  border: 0; padding: 0; background: none; color: inherit;
+  touch-action: manipulation;
+}
+.reticle svg {
+  width: 100%; height: 100%; display: block; overflow: visible;
+  transition: transform .12s ease;
+}
+.reticle:active:not(:disabled) svg { transform: scale(.965); }
+.reticle:disabled { opacity: .4; }
+.reticle:focus-visible { outline: none; }
+.reticle:focus-visible svg { filter: drop-shadow(0 0 0 2px var(--tone)); }
+
+/* Every ring rotates about the centre of the drawing, not its own box. */
+.reticle svg > * { transform-box: view-box; transform-origin: 150px 150px; }
+
+.tick { stroke: var(--tone); stroke-width: 1.4; opacity: .38; stroke-linecap: round; }
+.tick.major { stroke-width: 2.6; opacity: .85; }
+
+.ring-outer { animation: spin 70s linear infinite; }
+.scope.live .ring-outer { animation-duration: 140s; }
+
+.ring-mid {
+  fill: none; stroke: var(--tone); stroke-width: 5; stroke-linecap: round;
+  opacity: .9;
+  animation: spin 22s linear infinite reverse;
+}
+/* The lock: a fast spin into line, then it holds. Starting the spin from a
+   fixed angle hides wherever the idle drift happened to leave it. */
+.scope.live .ring-mid {
+  animation: midlock .62s cubic-bezier(.2, .9, .25, 1.15) forwards;
+}
+
+.cross line { stroke: var(--tone); stroke-width: 2.4; stroke-linecap: round; }
+.cross {
+  opacity: .55; transform: scale(1.06);
+  transition: transform .5s cubic-bezier(.2, .9, .25, 1.2), opacity .35s ease;
+}
+.scope.live .cross { opacity: 1; transform: scale(1); }
+
+.ring-inner {
+  fill: none; stroke: var(--tone); stroke-width: 1.5;
+  opacity: .45; transform: scale(1.1);
+  transition: transform .55s cubic-bezier(.2, .9, .25, 1.25), opacity .35s ease;
+}
+.scope.live .ring-inner { opacity: .95; transform: scale(1); }
+
+/* The centre. Armed it is an empty sight; live it is the dot. */
+.core {
+  fill: transparent; stroke: var(--tone); stroke-width: 2;
+  transition: fill .25s ease, stroke .25s ease;
+}
+.scope.live .core {
+  fill: url(#dot); stroke: none; filter: url(#bloom);
+  animation: shimmer 1.9s steps(1, end) infinite;
+}
+/* A gradient, not a blurred disc: blurring a filled circle still leaves the
+   edge of a circle, and a glow has no edge. */
+.core-halo { fill: url(#glow); opacity: 0; transform: scale(.5); }
+.scope.live .core-halo { animation: halo 2.4s ease-in-out infinite; }
+
+/* Fired once on lock. */
+.shock { fill: none; stroke: var(--tone); stroke-width: 2.5; opacity: 0; }
+.scope.locking .shock { animation: shock .72s cubic-bezier(.15, .7, .3, 1) forwards; }
+
+/* In the band between the dot and the inner ring: the glow ends near 57%, the
+   ring starts near 73%, and the word sits between them in both states. */
+.reticle-label {
+  position: absolute; left: 0; right: 0; top: 60.5%;
+  text-align: center; pointer-events: none;
+  font: 600 clamp(22px, 6.8vw, 27px)/1 var(--sans, system-ui);
+  letter-spacing: -.015em; color: var(--tone);
+  transition: color .3s ease;
+}
+
+.scope-status {
+  margin: 0; font-size: 13px; letter-spacing: .01em;
+  color: var(--ink-dim, #969ca4);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.scope-status::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--tone); opacity: .9;
+}
+.scope.live .scope-status::before { animation: halo 2.4s ease-in-out infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes midlock {
+  from { transform: rotate(-150deg); }
+  to   { transform: rotate(45deg); }
+}
+@keyframes shock {
+  0%   { opacity: .9; transform: scale(.55); stroke-width: 4; }
+  100% { opacity: 0;  transform: scale(1.75); stroke-width: .5; }
+}
+@keyframes halo {
+  0%, 100% { opacity: .75; transform: scale(.92); }
+  50%      { opacity: 1;   transform: scale(1.12); }
+}
+/* A laser dot on a matt surface never sits still -- speckle makes it crawl.
+   Stepped rather than eased, because speckle flickers, it does not breathe. */
+@keyframes shimmer {
+  0%   { transform: scale(1);    opacity: 1; }
+  18%  { transform: scale(1.06); opacity: .92; }
+  37%  { transform: scale(.96);  opacity: 1; }
+  52%  { transform: scale(1.03); opacity: .88; }
+  71%  { transform: scale(.98);  opacity: 1; }
+  86%  { transform: scale(1.05); opacity: .95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-outer, .ring-mid, .scope.live .core, .scope.live .core-halo,
+  .scope.locking .shock, .scope.live .scope-status::before { animation: none !important; }
+  .scope.live .ring-mid { transform: rotate(45deg); }
+  .scope.live .core-halo { opacity: .85; transform: none; }
+  .cross, .ring-inner, .core { transition: none; }
+}
+.scope-status.warn { color: var(--ink, #eceef0); max-width: 30ch; text-align: center; }
+.scope-status.warn::before { background: #e0913c; animation: none; }

@@ -21,7 +21,7 @@ const int PAN_PIN = 9, TILT_PIN = 10, LASER_PIN = 7;
 
 // Limits keep the servos from hitting the frame
 const int PAN_MIN = 10,  PAN_MAX = 170;
-const int TILT_MIN = 20, TILT_MAX = 160;
+const int TILT_MIN = 5, TILT_MAX = 160;
 const unsigned long LASER_TIMEOUT_MS = 15000;   // laser turns itself off after 15 s idle
 
 Servo panServo, tiltServo;

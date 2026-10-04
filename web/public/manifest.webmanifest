@@ -1,0 +1,9 @@
+{
+  "name": "Laser Buddy",
+  "short_name": "Laser Buddy",
+  "start_url": "/remote",
+  "display": "standalone",
+  "background_color": "#16181b",
+  "theme_color": "#16181b",
+  "icons": [{ "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }]
+}

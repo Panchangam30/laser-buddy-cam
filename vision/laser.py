@@ -45,7 +45,7 @@ KEEPALIVE_S = 9.0
 #: Must match the firmware's limits, or the host aims somewhere the head will
 #: silently clamp and the calibration learns a lie.
 PAN_MIN, PAN_MAX = 10.0, 170.0
-TILT_MIN, TILT_MAX = 20.0, 160.0
+TILT_MIN, TILT_MAX = 5.0, 160.0
 
 
 @dataclass
