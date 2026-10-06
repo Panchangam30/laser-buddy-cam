@@ -51,8 +51,16 @@ export async function speak(text: string, signal?: AbortSignal): Promise<HTMLAud
   if (!r.ok) return null;
   const url = URL.createObjectURL(await r.blob());
   const audio = new Audio(url);
-  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-  await audio.play().catch(() => {});
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    URL.revokeObjectURL(url);
+  };
+  audio.addEventListener("ended", release, { once: true });
+  audio.addEventListener("pause", release, { once: true });
+  audio.addEventListener("error", release, { once: true });
+  await audio.play().catch(release);
   return audio;
 }
 
