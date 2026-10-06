@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { visionDebugUrl } from "../lib/world";
 
 /**
@@ -13,16 +13,16 @@ import { visionDebugUrl } from "../lib/world";
 export function BoardMap({ onClose, live }: { onClose: () => void; live: boolean }) {
   const [view, setView] = useState<"rect" | "frame">("rect");
   const [broken, setBroken] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, refresh] = useState(0);
 
-  // The url carries a timestamp, so a new tick is what fetches a new frame.
-  const src = useMemo(() => visionDebugUrl(view), [view, tick]);
+  // The URL carries a timestamp, so each refresh fetches a new frame.
+  const src = visionDebugUrl(view);
 
   useEffect(() => {
     if (!live) return;
     // Slower than the tracking loop on purpose: this is for watching, and a new
     // JPEG four times a second is a lot of decoding for no extra insight.
-    const id = window.setInterval(() => setTick((t) => t + 1), 700);
+    const id = window.setInterval(() => refresh((tick) => tick + 1), 700);
     return () => window.clearInterval(id);
   }, [live]);
 
