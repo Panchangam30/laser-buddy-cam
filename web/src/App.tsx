@@ -193,20 +193,22 @@ export default function App() {
     () => reconcile(plan, world, step), [plan, world, step]);
   const worldRef = useRef(world); worldRef.current = world;
   const guidanceRef = useRef(guidance); guidanceRef.current = guidance;
+  const narrationText = current
+    ? `Step ${current.n}. ${current.title}. ${current.instruction} ${current.warning ?? ""}`
+    : null;
 
   // Narrate whenever the step changes, cutting off whatever was playing.
   useEffect(() => {
     audioRef.current?.pause();
     audioRef.current = null;
-    if (!narrate || !current || voice === "live") return;
-    const text = `Step ${current.n}. ${current.title}. ${current.instruction} ${current.warning ?? ""}`;
+    if (!narrate || !narrationText || voice === "live") return;
     let cancelled = false;
-    speak(text).then((a) => {
+    speak(narrationText).then((a) => {
       if (cancelled) a?.pause();
       else audioRef.current = a;
     });
     return () => { cancelled = true; };
-  }, [step, narrate, current?.n, plan.title, voice]);
+  }, [narrate, narrationText, voice]);
 
   /**
    * Feed frames to the vision service while tracking is on.
