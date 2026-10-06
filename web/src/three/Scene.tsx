@@ -19,6 +19,8 @@ import { ExternalDevices, externalAnchorMap } from "./ExternalDevices";
  */
 export type ViewMode = "plan" | "live";
 
+const NO_DEVICES: NonNullable<Plan["devices"]> = [];
+
 export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
   simulation = { running: false, powered: true, rate: 1, includedIds: [] },
@@ -45,7 +47,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
     .forEach((id) => visibleAt.set(id, s.n)));
   const current = plan.steps.find((s) => s.n === step);
   const currentIds = new Set([...(current?.adds ?? []), ...(current?.renders ?? [])]);
-  const devices = plan.devices ?? [];
+  const devices = plan.devices ?? NO_DEVICES;
   const externalAnchors = useMemo(() => externalAnchorMap(devices), [devices]);
   const visibleDeviceIds = devices
     .filter((device) => (device.visibleFromStep ?? 1) <= step)
