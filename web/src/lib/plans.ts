@@ -12,6 +12,12 @@ const PART_KINDS = new Set<PartKind>([
 const DEVICE_KINDS = new Set<ExternalDeviceKind>([
   "arduino-uno", "micro-servo", "power-supply", "generic",
 ]);
+const STEP_KINDS = new Set<NonNullable<Step["kind"]>>([
+  "placement", "configure", "code", "test", "safety",
+]);
+const STEP_COMPLETIONS = new Set<NonNullable<Step["completion"]>>([
+  "workspace", "manual", "test",
+]);
 
 function uid(prefix: string): string {
   const id = globalThis.crypto?.randomUUID?.()
@@ -201,7 +207,8 @@ function stepsOf(value: unknown, partIds: Set<string>): Step[] {
     const renders = Array.isArray(row.renders)
       ? row.renders.map((id) => text(id)).filter(Boolean) : [];
     for (const id of renders) if (!partIds.has(id)) throw new Error(`Step ${index + 1} renders unknown part ${id}.`);
-    const kind = text(row.kind) as Step["kind"];
+    const requestedKind = text(row.kind) as NonNullable<Step["kind"]>;
+    const requestedCompletion = text(row.completion) as NonNullable<Step["completion"]>;
     const n = index + 1;
     const id = text(row.id, `step-${n}`);
     if (stepIds.has(id)) throw new Error(`Step ${n} has duplicate id ${id}.`);
@@ -214,9 +221,10 @@ function stepsOf(value: unknown, partIds: Set<string>): Step[] {
       adds,
       renders: renders.length ? renders : undefined,
       warning: text(row.warning) || undefined,
-      kind: kind || (adds.length ? "placement" : "configure"),
-      completion: text(row.completion) as Step["completion"]
-        || (adds.length ? "workspace" : "manual"),
+      kind: STEP_KINDS.has(requestedKind)
+        ? requestedKind : (adds.length ? "placement" : "configure"),
+      completion: STEP_COMPLETIONS.has(requestedCompletion)
+        ? requestedCompletion : (adds.length ? "workspace" : "manual"),
       artifactIds: Array.isArray(row.artifactIds)
         ? row.artifactIds.map((id) => text(id)).filter(Boolean) : undefined,
     };
