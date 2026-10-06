@@ -23,6 +23,11 @@ function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+function positiveInteger(value: unknown, fallback = 1): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 function detectedOf(value: unknown): DetectedPart[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -32,7 +37,7 @@ function detectedOf(value: unknown): DetectedPart[] {
     if (!label) return [];
     return [{
       label,
-      count: Math.max(1, Number(row.count) || 1),
+      count: positiveInteger(row.count),
       confidence: text(row.confidence, "low"),
       unreadable: Boolean(row.unreadable),
     }];
