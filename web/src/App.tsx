@@ -140,6 +140,18 @@ export default function App() {
     openProject(next);
   }, [openProject]);
 
+  const onCapture = useCallback(async (dataUrl: string) => {
+    setBusy(true); setError("");
+    try {
+      const nextPlan = await requestPlan(dataUrl);
+      await addProject(createProject(nextPlan, nextPlan.title));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [addProject]);
+
   const buildGoal = useCallback(async (goal: string) => {
     setGoalBusy(true); setGoalError("");
     try {
@@ -286,7 +298,7 @@ export default function App() {
     };
     const id = window.setInterval(tick, 2000);
     return () => { stopped = true; window.clearInterval(id); };
-  }, []);
+  }, [onCapture]);
 
   const startTracking = useCallback(() => {
     setVisionErr("");
@@ -518,18 +530,6 @@ export default function App() {
     window.addEventListener("add-starter-part", handleAdd);
     return () => window.removeEventListener("add-starter-part", handleAdd);
   }, [addKitPart]);
-
-  async function onCapture(dataUrl: string) {
-    setBusy(true); setError("");
-    try {
-      const p = await requestPlan(dataUrl);
-      await addProject(createProject(p, p.title));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const visionDown = keys.vision === "not running";
 
