@@ -192,6 +192,7 @@ function devicesOf(value: unknown, parts: Part[], requirements: Requirement[]): 
 
 function stepsOf(value: unknown, partIds: Set<string>): Step[] {
   if (!Array.isArray(value)) throw new Error("The plan has no assembly steps.");
+  const stepIds = new Set<string>();
   return value.map((item, index) => {
     if (!item || typeof item !== "object") throw new Error(`Step ${index + 1} is invalid.`);
     const row = item as Record<string, unknown>;
@@ -202,8 +203,11 @@ function stepsOf(value: unknown, partIds: Set<string>): Step[] {
     for (const id of renders) if (!partIds.has(id)) throw new Error(`Step ${index + 1} renders unknown part ${id}.`);
     const kind = text(row.kind) as Step["kind"];
     const n = index + 1;
+    const id = text(row.id, `step-${n}`);
+    if (stepIds.has(id)) throw new Error(`Step ${n} has duplicate id ${id}.`);
+    stepIds.add(id);
     return {
-      id: text(row.id, `step-${n}`),
+      id,
       n,
       title: text(row.title, `Step ${n}`),
       instruction: text(row.instruction),
