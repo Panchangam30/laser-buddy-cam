@@ -592,7 +592,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
   box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
   font-size: 11.5px; line-height: 1.5; text-align: left;
   opacity: 0; visibility: hidden; transform: translate(60px, -58px);
-  transition: opacity .12s ease 3s, visibility 0s linear 3s;
+  transition: opacity .12s ease .35s, visibility 0s linear .35s;
 }
 .component-tooltip strong { display: block; color: var(--ink); margin-bottom: 4px; font-size: 12px; }
 .component-card:hover .component-tooltip,

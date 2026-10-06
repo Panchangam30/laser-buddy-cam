@@ -84,9 +84,8 @@ test.describe("3D planning workbench", () => {
     const tooltip = card.locator(".component-tooltip");
 
     await card.hover();
-    await expect(tooltip).toHaveCSS("opacity", "0");
-    await page.waitForTimeout(500);
-    await expect(tooltip).toHaveCSS("opacity", "1");
+    await expect(tooltip).toHaveCSS("opacity", "1", { timeout: 1_000 });
+    await expect(tooltip).toHaveCSS("visibility", "visible");
   });
 
   test("creates and restores a named-goal project", async ({ page }) => {
