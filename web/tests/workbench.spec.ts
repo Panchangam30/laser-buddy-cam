@@ -53,6 +53,18 @@ test.describe("3D planning workbench", () => {
     await expect(page.locator(".part-actions")).toContainText("Part selected");
   });
 
+  test("rotates and removes a selected component", async ({ page }) => {
+    await page.getByRole("button", { name: /Components/ }).click();
+    await page.locator(".component-card").filter({ hasText: "Red LED" }).click();
+
+    await expect(page.locator(".component-count")).toHaveText("1");
+    await expect(page.locator(".part-actions")).toContainText("Part selected");
+    await page.getByRole("button", { name: "Rotate", exact: true }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.locator(".component-count")).toHaveCount(0);
+    await expect(page.locator(".part-actions")).toHaveCount(0);
+  });
+
   test("starts, configures, stops, and restarts simulation without losing the plan", async ({ page }) => {
     const play = page.getByRole("button", { name: "Play simulation" });
     await expect(play).toBeDisabled();
@@ -150,5 +162,76 @@ test.describe("3D planning workbench", () => {
     await expect(page.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/docs");
     await expect(page.getByRole("link", { name: /View Laser Buddy live/ }))
       .toHaveAttribute("href", "https://laserbuddy.vercel.app/");
+  });
+
+  test("filters the starter kit by component name", async ({ page }) => {
+    await page.getByRole("button", { name: /Components/ }).click();
+    const search = page.getByPlaceholder("Search 32 components…");
+    await search.fill("servo");
+
+    await expect(page.locator(".component-card")).toHaveCount(1);
+    await expect(page.locator(".component-card").first()).toContainText("Micro Servo");
+    await search.fill("no matching part");
+    await expect(page.locator(".component-card")).toHaveCount(0);
+  });
+
+  test("moves between assembly steps without passing the plan boundaries", async ({ page }) => {
+    const back = page.getByRole("button", { name: "← Back" });
+    const next = page.getByRole("button", { name: "Next →" });
+    await expect(page.locator(".progress")).toHaveText("1 / 4");
+    await expect(back).toBeDisabled();
+
+    await next.click();
+    await expect(page.locator(".progress")).toHaveText("2 / 4");
+    await expect(page.locator(".instruction")).toContainText("Bridge E22 to E26");
+    await back.click();
+    await expect(page.locator(".progress")).toHaveText("1 / 4");
+
+    await next.click();
+    await next.click();
+    await next.click();
+    await expect(page.locator(".progress")).toHaveText("4 / 4");
+    await expect(next).toBeDisabled();
+  });
+
+  test("collapses and reopens the device controls", async ({ page }) => {
+    const devices = page.getByRole("button", { name: "Devices" });
+    await expect(devices).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("heading", { name: "Board tracking" })).toBeVisible();
+
+    await devices.click();
+    await expect(devices).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("heading", { name: "Board tracking" })).toHaveCount(0);
+    await devices.click();
+    await expect(page.getByRole("heading", { name: "Board tracking" })).toBeVisible();
+  });
+
+  test("switches to My board and back to the planning tools", async ({ page }) => {
+    await page.getByRole("button", { name: "My board", exact: true }).click();
+    await expect(page.getByRole("button", { name: "My board", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("button", { name: "Components" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Plan", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("button", { name: "Components" })).toBeVisible();
+  });
+
+  test("creates and restores the built-in LED example", async ({ page }) => {
+    await page.getByRole("button", { name: "Projects" }).click();
+    let dialog = page.getByRole("dialog", { name: "Projects" });
+    await expect(dialog.locator(".project-list article")).toHaveCount(1);
+    await dialog.getByRole("button", { name: "New LED example" }).click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "LED blink circuit" })).toBeVisible();
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: "Projects" });
+    await expect(dialog.locator(".project-list article")).toHaveCount(2);
+
+    await page.reload();
+    await page.getByRole("button", { name: "Projects" }).click();
+    await expect(page.getByRole("dialog", { name: "Projects" }).locator(".project-list article"))
+      .toHaveCount(2);
   });
 });
