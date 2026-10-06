@@ -28,6 +28,11 @@ function positiveInteger(value: unknown, fallback = 1): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function finiteInteger(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+
 function detectedOf(value: unknown): DetectedPart[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -176,9 +181,9 @@ function devicesOf(value: unknown, parts: Part[], requirements: Requirement[]): 
       aliases: Array.isArray(row.aliases)
         ? row.aliases.map((alias) => text(alias)).filter(Boolean) : undefined,
       ports: portsOf(row.ports, kind),
-      visibleFromStep: Math.max(1, Number(row.visibleFromStep) || 1),
+      visibleFromStep: positiveInteger(row.visibleFromStep),
       placement: placementRow && ["front", "left", "right"].includes(sideText)
-        ? { side, order: Number(placementRow.order) || 0 }
+        ? { side, order: finiteInteger(placementRow.order) }
         : undefined,
     } satisfies ExternalDevice];
   });
