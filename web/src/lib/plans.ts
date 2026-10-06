@@ -351,6 +351,18 @@ export function normalizeProject(raw: unknown): Project {
   const progress = row.progress && typeof row.progress === "object"
     ? row.progress as Record<string, unknown> : {};
   const createdAt = text(row.createdAt, new Date().toISOString());
+  const requestedStep = positiveInteger(progress.currentStep);
+  const requestedStepId = text(progress.currentStepId);
+  const stepById = requestedStepId
+    ? plan.steps.find((step) => step.id === requestedStepId) : undefined;
+  const activeStep = stepById
+    ?? plan.steps.find((step) => step.n === requestedStep)
+    ?? plan.steps[0];
+  const validStepIds = new Set(plan.steps.map((step) => step.id).filter(Boolean));
+  const completedStepIds = Array.isArray(progress.manuallyCompletedStepIds)
+    ? [...new Set(progress.manuallyCompletedStepIds.map((id) => text(id)))]
+      .filter((id) => id && validStepIds.has(id))
+    : [];
   return {
     schemaVersion: 1,
     id: text(row.id, uid("project")),
@@ -358,10 +370,9 @@ export function normalizeProject(raw: unknown): Project {
     goal: text(row.goal) || undefined,
     plan,
     progress: {
-      currentStep: Math.max(1, Number(progress.currentStep) || 1),
-      currentStepId: text(progress.currentStepId) || undefined,
-      manuallyCompletedStepIds: Array.isArray(progress.manuallyCompletedStepIds)
-        ? progress.manuallyCompletedStepIds.map((id) => text(id)).filter(Boolean) : [],
+      currentStep: activeStep?.n ?? 1,
+      currentStepId: activeStep?.id,
+      manuallyCompletedStepIds: completedStepIds,
     },
     createdAt,
     updatedAt: text(row.updatedAt, createdAt),
