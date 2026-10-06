@@ -154,7 +154,7 @@ app.post("/api/plan/goal", (req, res) => {
 
 /** Step text -> spoken audio, via Grok TTS. Returns mp3 bytes. */
 app.post("/api/speak", async (req, res) => {
-  const { text } = req.body as { text?: string };
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!text) return res.status(400).json({ error: "no text" });
   if (!XAI_KEY) return res.status(503).json({ error: "XAI_API_KEY missing -- narration disabled" });
 
