@@ -22,6 +22,7 @@ const REALTIME_VOICE = process.env.REALTIME_VOICE || "marin";
 const GROK_VOICE_MODEL = process.env.GROK_VOICE_MODEL || "grok-voice-latest";
 const VOICE_PROVIDER = (process.env.VOICE_PROVIDER || "grok").toLowerCase();
 const VISION_URL = process.env.VISION_URL || "http://127.0.0.1:8788";
+const MAX_GOAL_LENGTH = 500;
 
 app.get("/api/health", async (_req, res) => {
   res.json({
@@ -131,8 +132,14 @@ app.post("/api/plan", async (req, res) => {
 
 /** Named goal -> a validated, deterministic plan. */
 app.post("/api/plan/goal", (req, res) => {
-  const goal = typeof req.body?.goal === "string" ? req.body.goal.trim() : "";
+  const goal = typeof req.body?.goal === "string"
+    ? req.body.goal.trim().replace(/\s+/g, " ") : "";
   if (!goal) return res.status(400).json({ error: "Describe what you want to build." });
+  if (goal.length > MAX_GOAL_LENGTH) {
+    return res.status(400).json({
+      error: `Keep the project goal under ${MAX_GOAL_LENGTH} characters.`,
+    });
+  }
   const result = planForGoal(goal);
   if (!result) {
     return res.status(422).json({
