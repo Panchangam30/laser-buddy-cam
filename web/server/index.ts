@@ -83,8 +83,11 @@ app.use("/api/vision", async (req, res) => {
 
 /** Photo of the bench -> assembly plan. */
 app.post("/api/plan", async (req, res) => {
-  const { image } = req.body as { image?: string };
+  const image = typeof req.body?.image === "string" ? req.body.image : "";
   if (!image) return res.status(400).json({ error: "no image supplied" });
+  if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(image)) {
+    return res.status(400).json({ error: "image must be a base64 data URL" });
+  }
   if (!OPENAI_KEY) return res.status(500).json({ error: "OPENAI_API_KEY missing from .env" });
 
   try {
