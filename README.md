@@ -148,6 +148,14 @@ project and its current/manual step progress survive reloads; camera images are
 not stored. A successful bench scan creates a project, while a failed scan leaves
 the last good project alone.
 
+In **Projects**, use **Export JSON** to download the current plan, required
+parts, code artifacts, and progress. **Import JSON** adds a separate local copy
+without overwriting existing projects. **Create share link** packages the same
+data into a compressed URL fragment; recipients open their own editable copy.
+No account, database, or server storage is required. Large projects can be
+shared as JSON instead. Share links include the exported content, so only share
+projects you intend recipients to read. Cameras and voice recordings are not included.
+
 The Projects panel also accepts named goals. Goal plans come from a verified,
 deterministic catalog and include requirements, safety warnings, code and manual
 test steps. Unsupported goals are refused rather than receiving model-invented

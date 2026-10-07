@@ -692,6 +692,14 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
 .goal-form button { background: var(--signal); color: var(--signal-ink); border-color: var(--signal); font-weight: 650; }
 .goal-form p { margin: 8px 0 0; color: var(--ink-faint); font-size: 11px; }
 .project-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.project-sharing { margin: 20px 0; padding: 16px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--chassis); }
+.project-sharing p, .project-share-link label { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+.project-sharing-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.project-import { position: relative; display: inline-flex; align-items: center; overflow: hidden; padding: 7px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--raised); cursor: pointer; }
+.project-import input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.project-import:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
+.project-share-link { display: grid; gap: 8px; margin-top: 14px; }
+.project-share-link input { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); font-size: 12px; }
 .project-list { display: grid; gap: 8px; }
 .project-list article {
   display: flex; align-items: stretch; border: 1px solid var(--rule);

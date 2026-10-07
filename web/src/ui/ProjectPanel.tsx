@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { Project } from "../lib/types";
+import { downloadProject, importProject, projectShareLink } from "../lib/sharing";
 
 export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
-  onGoal, onExample, onDelete,
+  onGoal, onExample, onDelete, activeProject, onImport,
 }: {
   projects: Project[];
   activeId: string;
@@ -13,8 +14,14 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
   onGoal: (goal: string) => Promise<void>;
   onExample: () => void;
   onDelete: (project: Project) => void;
+  activeProject: Project;
+  onImport: (project: Project) => Promise<void>;
 }) {
   const [goal, setGoal] = useState("");
+  const [shareError, setShareError] = useState("");
+  const [shareLink, setShareLink] = useState("");
+  const [shareStatus, setShareStatus] = useState("");
+  const [importing, setImporting] = useState(false);
 
   return (
     <div className="project-scrim" role="presentation" onMouseDown={(event) => {
@@ -40,6 +47,43 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
           <p>Goals outside the verified catalog are refused rather than given guessed wiring.</p>
           {error && <p className="error">{error}</p>}
         </form>
+
+        <section className="project-sharing" aria-label="Share project">
+          <h3>Take your project with you</h3>
+          <p>Includes the plan, code, required parts, and your progress. No account needed.</p>
+          <div className="project-sharing-actions">
+            <button onClick={() => downloadProject(activeProject)}>Export JSON</button>
+            <label className="project-import">{importing ? "Importing…" : "Import JSON"}
+              <input type="file" accept=".json,application/json" disabled={importing} aria-label="Import project JSON"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  setImporting(true); setShareError("");
+                  try {
+                    if (file.size > 1_000_000) throw new Error("Project files must be smaller than 1 MB.");
+                    await onImport(importProject(await file.text()));
+                  } catch (error) { setShareError(error instanceof Error ? error.message : "Could not import this file."); }
+                  finally { setImporting(false); }
+                }} />
+            </label>
+            <button onClick={async () => {
+              setShareError(""); setShareStatus("");
+              try { setShareLink(await projectShareLink(activeProject)); }
+              catch (error) { setShareError(error instanceof Error ? error.message : "Could not create a link."); }
+            }}>Create share link</button>
+          </div>
+          {shareLink && <div className="project-share-link">
+            <label htmlFor="project-share-url">Anyone with this link can open a copy. Changes stay in each person's browser.</label>
+            <input id="project-share-url" value={shareLink} readOnly onFocus={(event) => event.target.select()} />
+            <button onClick={async () => {
+              try { await navigator.clipboard.writeText(shareLink); setShareStatus("Link copied."); }
+              catch { setShareStatus("Select the link above and copy it manually."); }
+            }}>Copy link</button>
+          </div>}
+          {shareStatus && <p role="status">{shareStatus}</p>}
+          {shareError && <p className="error" role="alert">{shareError}</p>}
+        </section>
 
         <div className="project-list-head">
           <h3>Saved projects</h3>

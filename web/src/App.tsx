@@ -29,6 +29,7 @@ import {
 } from "./components/StarterKit";
 import { SiteFooter } from "./components/SiteFooter";
 import { challengeById } from "./hub/content";
+import { projectFromLink } from "./lib/sharing";
 import "./App.css";
 
 /** How often a frame goes to the vision service while tracking is on. */
@@ -99,9 +100,29 @@ export default function App() {
   useEffect(() => { health().then(setKeys); }, []);
 
   useEffect(() => {
+    // Opening a share link while this workbench is already open changes only
+    // the fragment; reload so the normal import/hydration path handles it.
+    const openSharedProject = () => {
+      if (window.location.hash.startsWith("#project=")) window.location.reload();
+    };
+    window.addEventListener("hashchange", openSharedProject);
+    return () => window.removeEventListener("hashchange", openSharedProject);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
+        const shared = await projectFromLink(window.location.hash);
+        if (cancelled) return;
+        if (shared) {
+          await saveProject(shared);
+          setProject(shared);
+          setStep(shared.progress.currentStep);
+          setProjects(await listProjects());
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+          return;
+        }
         const saved = challengeProject ?? await loadLastProject();
         if (cancelled) return;
         if (saved) {
@@ -917,6 +938,8 @@ export default function App() {
 
       {projectsOpen && (
         <ProjectPanel projects={projects} activeId={project.id} busy={goalBusy}
+          activeProject={{ ...project, progress: { ...project.progress, currentStep: step,
+            currentStepId: current?.id } }} onImport={addProject}
           error={goalError} onClose={() => setProjectsOpen(false)} onOpen={openProject}
           onGoal={buildGoal}
           onExample={() => { void addProject(createProject(MOCK_PLAN, "LED blink example")); }}
