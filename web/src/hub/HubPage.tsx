@@ -30,7 +30,7 @@ function readHints(): Record<string, number> {
 function HubHeader() {
   return (
     <header className="hub-topbar">
-      <a className="hub-brand" href="/"><span className="hub-mark">?</span><strong>Laser Buddy</strong><em>Learning Hub</em></a>
+      <a className="hub-brand" href="/"><strong>Laser Buddy</strong><em>Learning Hub</em></a>
       <nav aria-label="Hub utilities"><a href="/">Workbench</a><a href="/docs">Docs</a></nav>
     </header>
   );

@@ -7,7 +7,6 @@ body:has(.hub-site) { margin: 0; background: var(--hub-bg); color: var(--ink); }
 .hub-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .hub-brand strong { font-size: 14px; }
 .hub-brand em { padding-left: 10px; border-left: 1px solid var(--hub-line); color: #8f969f; font: 12px/1 var(--sans); }
-.hub-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; color: #191400; background: var(--hub-yellow); font: 800 16px/1 var(--mono); }
 .hub-topbar nav { display: flex; gap: 6px; margin-left: auto; }
 .hub-topbar nav a { padding: 8px 12px; border-radius: 7px; color: #abb0b7; text-decoration: none; font-size: 12px; }
 .hub-topbar nav a:hover { color: white; background: #24282d; }
