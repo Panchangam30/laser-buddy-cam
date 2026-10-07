@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Project } from "../lib/types";
-import { downloadProject, importProject, projectShareLink } from "../lib/sharing";
+import { downloadProject, importProject, projectShareLink, MAX_PROJECT_BYTES } from "../lib/sharing";
 
 export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
   onGoal, onExample, onDelete, activeProject, onImport,
@@ -50,9 +50,13 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
 
         <section className="project-sharing" aria-label="Share project">
           <h3>Take your project with you</h3>
-          <p>Includes the plan, code, required parts, and your progress. No account needed.</p>
+          <p>Includes the plan, code, required parts, progress, and build replay. No account needed.</p>
           <div className="project-sharing-actions">
-            <button onClick={() => downloadProject(activeProject)}>Export JSON</button>
+            <button onClick={() => {
+              setShareError("");
+              try { downloadProject(activeProject); }
+              catch (error) { setShareError(error instanceof Error ? error.message : "Could not export project."); }
+            }}>Export JSON</button>
             <label className="project-import">{importing ? "Importing…" : "Import JSON"}
               <input type="file" accept=".json,application/json" disabled={importing} aria-label="Import project JSON"
                 onChange={async (event) => {
@@ -61,7 +65,7 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
                   if (!file) return;
                   setImporting(true); setShareError("");
                   try {
-                    if (file.size > 1_000_000) throw new Error("Project files must be smaller than 1 MB.");
+                    if (file.size > MAX_PROJECT_BYTES) throw new Error("Project files must be smaller than 10 MB.");
                     await onImport(importProject(await file.text()));
                   } catch (error) { setShareError(error instanceof Error ? error.message : "Could not import this file."); }
                   finally { setImporting(false); }

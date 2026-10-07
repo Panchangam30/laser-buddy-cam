@@ -156,6 +156,17 @@ No account, database, or server storage is required. Large projects can be
 shared as JSON instead. Share links include the exported content, so only share
 projects you intend recipients to read. Cameras and voice recordings are not included.
 
+### Build replay
+
+Board tracking automatically records changes after three consistent observations.
+Open **Timeline** to scrub, step through, or play those snapshots in **My board**.
+Each entry saves the board measurements, wiring issues, assembly step, and plan
+at that moment. **Return to live** restores the current board view; voice and
+laser guidance always use the live board, never the historical display.
+The latest 300 changes are kept in the browser's project library and included
+in JSON export/import, so an instructor can review a shared build. No camera
+images, audio, account, or remote database are required.
+
 The Projects panel also accepts named goals. Goal plans come from a verified,
 deterministic catalog and include requirements, safety warnings, code and manual
 test steps. Unsupported goals are refused rather than receiving model-invented

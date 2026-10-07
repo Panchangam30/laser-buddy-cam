@@ -1,0 +1,45 @@
+import { expect, test } from "playwright/test";
+
+test("records stable changes, ignores jitter, and round-trips replay through sharing", async ({ page }) => {
+  await page.goto("/hub");
+  const result = await page.evaluate(async () => {
+    const { StableBoardRecorder } = await import("/src/lib/replay.ts");
+    const { MOCK_PLAN } = await import("/src/lib/mockPlan.ts");
+    const { EMPTY_WORLD } = await import("/src/lib/world.ts");
+    const { createProject, normalizePlan } = await import("/src/lib/plans.ts");
+    const { exportProject, importProject, projectShareLink } = await import("/src/lib/sharing.ts");
+    const plan = normalizePlan(MOCK_PLAN);
+    const world = { ...EMPTY_WORLD, board: { found: true }, frame: 1, at: Date.now(), summary: "Empty board" };
+    const recorder = new StableBoardRecorder();
+    const first = recorder.observe(world, plan, 1, []);
+    const repeated = recorder.observe(world, plan, 1, []);
+    const second = recorder.observe({ ...world, frame: 2 }, plan, 1, []);
+    const stable = recorder.observe({ ...world, frame: 3 }, plan, 1, []);
+    if (!stable) throw new Error("Missing stable snapshot");
+    const duplicate = recorder.observe({ ...world, frame: 4 }, plan, 1, [stable]);
+    const issueWorld = { ...world, issues: [{ severity: "error" as const, message: "Short circuit", entities: [] }] };
+    recorder.observe({ ...issueWorld, frame: 5 }, plan, 1, [stable]);
+    recorder.observe({ ...issueWorld, frame: 6 }, plan, 1, [stable]);
+    const fault = recorder.observe({ ...issueWorld, frame: 7 }, plan, 1, [stable]);
+    if (!fault) throw new Error("Missing fault snapshot");
+    const project = createProject(plan, "Recorded build");
+    project.replay = [stable, fault];
+    const restored = importProject(exportProject(project));
+    return { first, repeated, second, duplicate, restored, link: await projectShareLink(project) };
+  });
+  expect(result.first).toBeNull();
+  expect(result.repeated).toBeNull();
+  expect(result.second).toBeNull();
+  expect(result.duplicate).toBeNull();
+  expect(result.restored.replay).toHaveLength(2);
+  expect(result.restored.replay?.[1].world.issues[0].message).toBe("Short circuit");
+  await page.goto(result.link);
+  await expect(page.getByRole("button", { name: "Timeline · 2" })).toBeVisible();
+  await page.getByRole("button", { name: "Timeline · 2" }).click();
+  await page.getByRole("button", { name: "Play replay", exact: true }).click();
+  await expect(page.getByLabel("Build replay").getByText("Short circuit", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Return to live", exact: true }).click();
+  await expect(page.getByLabel("Build replay").getByText("Live board", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Timeline · 2" })).toBeVisible();
+});

@@ -1,16 +1,19 @@
 import { createProject, normalizeProject } from "./plans";
 import type { Project } from "./types";
 
-const MAX_BYTES = 1_000_000;
+export const MAX_PROJECT_BYTES = 10_000_000;
+const MAX_BYTES = MAX_PROJECT_BYTES;
 const MAX_LINK_LENGTH = 32_000;
 
 export function exportProject(project: Project): string {
-  return JSON.stringify({ format: "laser-buddy-project", version: 1, project }, null, 2);
+  const json = JSON.stringify({ format: "laser-buddy-project", version: 1, project }, null, 2);
+  if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error("Project exceeds the 10 MB sharing limit.");
+  return json;
 }
 
 /** Imports always receive a new local identity; existing projects are never overwritten. */
 export function importProject(json: string): Project {
-  if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error("Project files must be smaller than 1 MB.");
+  if (new TextEncoder().encode(json).length > MAX_BYTES) throw new Error("Project files must be smaller than 10 MB.");
   let raw: unknown;
   try { raw = JSON.parse(json); } catch { throw new Error("This file is not valid JSON."); }
   if (!raw || typeof raw !== "object") throw new Error("This is not a Laser Buddy project.");
@@ -71,7 +74,7 @@ export async function projectFromLink(hash: string): Promise<Project | null> {
       const next = await reader.read();
       if (next.done) break;
       size += next.value.length;
-      if (size > MAX_BYTES) { await reader.cancel(); throw new Error("Project exceeds the 1 MB limit."); }
+      if (size > MAX_BYTES) { await reader.cancel(); throw new Error("Project exceeds the 10 MB limit."); }
       chunks.push(next.value);
     }
     const output = new Uint8Array(size);

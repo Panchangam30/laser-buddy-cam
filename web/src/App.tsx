@@ -30,6 +30,8 @@ import {
 import { SiteFooter } from "./components/SiteFooter";
 import { challengeById } from "./hub/content";
 import { projectFromLink } from "./lib/sharing";
+import { StableBoardRecorder, REPLAY_LIMIT } from "./lib/replay";
+import { ReplayPanel } from "./ui/ReplayPanel";
 import "./App.css";
 
 /** How often a frame goes to the vision service while tracking is on. */
@@ -61,6 +63,9 @@ export default function App() {
 
   // --- the live map of the board ---
   const [world, setWorld] = useState<World>(EMPTY_WORLD);
+  const [replayOpen, setReplayOpen] = useState(false);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
+  const recorder = useRef(new StableBoardRecorder());
   const [tracking, setTracking] = useState(false);
   const [visionErr, setVisionErr] = useState("");
   const [mode, setMode] = useState<ViewMode>("plan");
@@ -154,7 +159,7 @@ export default function App() {
       };
       void saveProject(updated).then(() => {
         setProjects((items) => items.map((item) => item.id === updated.id ? updated : item));
-      });
+      }).catch((error) => setError(`Could not save project or replay: ${error instanceof Error ? error.message : error}`));
     }, 250);
     return () => window.clearTimeout(timer);
   }, [project, plan.steps, step]);
@@ -163,6 +168,9 @@ export default function App() {
     setProject(next);
     setStep(next.progress.currentStep);
     setWorld(EMPTY_WORLD);
+    recorder.current = new StableBoardRecorder();
+    setReplayIndex(null);
+    setReplayOpen(false);
     setKitParts([]);
     setSelectedKitPart(null);
     setProjectsOpen(false);
@@ -240,6 +248,28 @@ export default function App() {
     () => reconcile(plan, world, step), [plan, world, step]);
   const worldRef = useRef(world); worldRef.current = world;
   const guidanceRef = useRef(guidance); guidanceRef.current = guidance;
+  const replay = project.replay ?? [];
+  const historical = replayIndex === null ? undefined : replay[replayIndex];
+  const displayWorld = historical?.world ?? world;
+  const displayPlan = historical?.plan ?? plan;
+  const displayStep = historical?.step ?? step;
+  const displayGuidance = useMemo(() => reconcile(displayPlan, displayWorld, displayStep),
+    [displayPlan, displayWorld, displayStep]);
+  const selectReplay = useCallback((index: number | null) => { setReplayIndex(index); setMode("live"); }, []);
+
+  useEffect(() => {
+    if (!projectReady.current || !tracking) return;
+    const snapshot = recorder.current.observe(world, plan, step, project.replay ?? []);
+    if (!snapshot) return;
+    if ((project.replay?.length ?? 0) >= REPLAY_LIMIT) {
+      setReplayIndex((index) => index === null ? null : Math.max(0, index - 1));
+    }
+    setProject((currentProject) => {
+      if (currentProject.id !== project.id) return currentProject;
+      const existing = currentProject.replay ?? [];
+      return { ...currentProject, replay: [...existing, snapshot].slice(-REPLAY_LIMIT) };
+    });
+  }, [world, tracking, plan, step, project.id]);
   const narrationText = current
     ? `Step ${current.n}. ${current.title}. ${current.instruction} ${current.warning ?? ""}`
     : null;
@@ -277,7 +307,9 @@ export default function App() {
       if (frame) {
         inFlight = true;
         try {
-          setWorld(await analyseFrame(frame));
+          const observed = await analyseFrame(frame);
+          if (stopped) return;
+          setWorld(observed);
           setVisionErr("");
           failures = 0;
         } catch (e) {
@@ -295,7 +327,7 @@ export default function App() {
 
     timer = window.setTimeout(tick, 0);
     return () => { stopped = true; window.clearTimeout(timer); };
-  }, [tracking]);
+  }, [tracking, project.id]);
 
   /**
    * Act on commands from the phone remote.
@@ -744,8 +776,8 @@ export default function App() {
           addKitPart(partId, seatPart(found?.shape ?? "ic",
             Math.max(-74, Math.min(74, x)), Math.max(-45, Math.min(45, z))));
         }}>
-        <Scene plan={plan} step={step} exploded={exploded}
-               mode={mode} world={world} guidance={guidance} labels={labels}
+        <Scene plan={displayPlan} step={displayStep} exploded={exploded}
+               mode={mode} world={displayWorld} guidance={displayGuidance} labels={labels}
                kitParts={kitParts} selectedKitPart={selectedKitPart}
                simulation={{ running: simulationRunning, powered: simulationPowered, rate: simulationRate,
                  includedIds: simulationIncluded }}
@@ -776,6 +808,11 @@ export default function App() {
         <a className="docs-trigger" href="/docs">Docs</a>
         <a className="hub-trigger" href="/hub" aria-label="Arduino Learning Hub"
           title="Arduino Learning Hub">?</a>
+        <button className="replay-trigger" onClick={() => { setReplayOpen(!replayOpen); setMode("live"); }}>
+          Timeline{replay.length > 0 ? ` · ${replay.length}` : ""}
+        </button>
+        {replayOpen && <ReplayPanel snapshots={replay} selected={replayIndex}
+          onSelect={selectReplay} onClose={() => { setReplayOpen(false); setReplayIndex(null); }} />}
 
         {challenge && (
           <aside className="workbench-challenge" aria-label="Troubleshooting challenge">
@@ -877,7 +914,10 @@ export default function App() {
 
         <div className="stage-dock">
           <div className="instruction">
-            {mode !== "plan" && world.frame > 0 ? (
+            {historical && mode === "live" ? (
+              <><strong>Replay · {new Date(historical.at).toLocaleTimeString()}</strong>
+                <p>{historical.summary}</p><p className="tally">At this point: {displayGuidance.nextAction}</p></>
+            ) : mode !== "plan" && world.frame > 0 ? (
               <>
                 <strong>Next</strong>
                 <p>{guidance.nextAction}</p>
