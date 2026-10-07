@@ -5,9 +5,11 @@ import { DocsPage } from "./docs/DocsPage";
 import { ThumbPage } from "./three/ThumbPage";
 import { RemotePage } from "./remote/RemotePage";
 import { AimPage } from "./remote/AimPage";
+import { HubPage } from "./hub/HubPage";
 
 const path = window.location.pathname;
 const page = path.startsWith("/docs") ? <DocsPage />
+  : path.startsWith("/hub") ? <HubPage />
   : path.startsWith("/thumb") ? <ThumbPage />
   : path.startsWith("/remote/aim") ? <AimPage />
   : path.startsWith("/remote") ? <RemotePage />

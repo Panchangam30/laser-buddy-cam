@@ -27,7 +27,7 @@ export class OpenAIVoiceSession implements VoiceSession {
   async connect() {
     this.opts.onStatus("connecting");
     try {
-      const instructions = buildInstructions(this.opts.plan, this.opts.step);
+      const instructions = buildInstructions(this.opts.plan, this.opts.step, undefined, this.opts.challenge);
       const tr = await fetch("/api/realtime-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,12 +91,13 @@ export class OpenAIVoiceSession implements VoiceSession {
   }
 
   /** Push fresh context after the plan or step changes. */
-  refreshContext(plan: Plan, step: number, live?: string) {
+  refreshContext(plan: Plan, step: number, live?: string, challenge = this.opts.challenge) {
     this.opts.plan = plan;
     this.opts.step = step;
+    this.opts.challenge = challenge;
     this.send({
       type: "session.update",
-      session: { type: "realtime", instructions: buildInstructions(plan, step, live) },
+      session: { type: "realtime", instructions: buildInstructions(plan, step, live, challenge) },
     });
   }
 

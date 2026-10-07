@@ -97,7 +97,8 @@ export interface PlanArtifact {
 export type PlanSource =
   | { kind: "builtin"; templateId: string }
   | { kind: "photo"; generatedAt: string }
-  | { kind: "goal"; goal: string; generatedAt: string };
+  | { kind: "goal"; goal: string; generatedAt: string }
+  | { kind: "challenge"; challengeId: string };
 
 export interface Plan {
   schemaVersion: 1;

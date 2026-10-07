@@ -59,7 +59,7 @@ export class GrokVoiceSession implements VoiceSession {
       type: "session.update",
       session: {
         voice: this.opts.voice ?? "atlas",
-        instructions: buildInstructions(this.opts.plan, this.opts.step),
+        instructions: buildInstructions(this.opts.plan, this.opts.step, undefined, this.opts.challenge),
         turn_detection: { type: "server_vad" },
         tools: TOOLS,
         audio: {
@@ -98,12 +98,13 @@ export class GrokVoiceSession implements VoiceSession {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
   }
 
-  refreshContext(plan: Plan, step: number, live?: string) {
+  refreshContext(plan: Plan, step: number, live?: string, challenge = this.opts.challenge) {
     this.opts.plan = plan;
     this.opts.step = step;
+    this.opts.challenge = challenge;
     this.send({
       type: "session.update",
-      session: { instructions: buildInstructions(plan, step, live) },
+      session: { instructions: buildInstructions(plan, step, live, challenge) },
     });
   }
 

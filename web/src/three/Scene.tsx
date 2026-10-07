@@ -23,6 +23,7 @@ const NO_DEVICES: NonNullable<Plan["devices"]> = [];
 
 export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
+  highlightPartIds = [],
   simulation = { running: false, powered: true, rate: 1, includedIds: [] },
   onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {},
 }: {
@@ -36,6 +37,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts?: PlacedKitPart[];
   simulation?: SimulationState;
   selectedKitPart?: string | null;
+  /** Extra emphasis used by lessons after the learner unlocks a targeted hint. */
+  highlightPartIds?: string[];
   onSelectKitPart?: (id: string | null) => void;
   onMoveKitPart?: (id: string, position: [number, number, number]) => void;
   onDeleteKitPart?: (id: string) => void;
@@ -55,6 +58,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   const visiblePartIds = plan.parts
     .filter((part) => (visibleAt.get(part.id) ?? 1) <= step)
     .map((part) => part.id).join(" ");
+  const lessonHighlights = new Set(highlightPartIds);
 
   const showPlan = mode !== "live";
   const showWorld = mode !== "plan";
@@ -91,7 +95,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
         {showPlan && plan.parts.map((p) => {
           const at = visibleAt.get(p.id) ?? 1;
           if (at > step) return null;
-          const isCurrent = currentIds.has(p.id);
+          const isCurrent = currentIds.has(p.id) || lessonHighlights.has(p.id);
           return (
             // The lift goes to PartMesh, not a wrapping group: only the part
             // itself can damp the change, and a group here would teleport it.

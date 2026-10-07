@@ -28,14 +28,20 @@ import {
   seatPart,
 } from "./components/StarterKit";
 import { SiteFooter } from "./components/SiteFooter";
+import { challengeById } from "./hub/content";
 import "./App.css";
 
 /** How often a frame goes to the vision service while tracking is on. */
 const TRACK_INTERVAL_MS = 450;
 
 export default function App() {
+  const challenge = challengeById(new URLSearchParams(window.location.search).get("challenge"));
+  const challengeProject = useMemo(() => challenge ? {
+    ...createProject(challenge.solutionPlan, `${challenge.title} challenge`),
+    id: `project-challenge-${challenge.id}`,
+  } : null, [challenge]);
   const [project, setProject] = useState<Project>(() =>
-    createProject(MOCK_PLAN, "LED blink example"));
+    challengeProject ?? createProject(MOCK_PLAN, "LED blink example"));
   const plan = project.plan;
   const [step, setStep] = useState(1);
   const [exploded, setExploded] = useState(false);
@@ -69,6 +75,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [kitParts, setKitParts] = useState<PlacedKitPart[]>([]);
   const [selectedKitPart, setSelectedKitPart] = useState<string | null>(null);
+  const [challengeHint, setChallengeHint] = useState(() => {
+    if (!challenge) return 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem("laser-buddy:hub-hints:v1") ?? "{}");
+      return Math.max(1, Math.min(3, Number(saved?.[challenge.id]) || 1));
+    } catch { return 1; }
+  });
+  const challengeHintRef = useRef(challengeHint); challengeHintRef.current = challengeHint;
   const nextKitId = useRef(1);
 
   // --- live voice ---
@@ -88,7 +102,7 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const saved = await loadLastProject();
+        const saved = challengeProject ?? await loadLastProject();
         if (cancelled) return;
         if (saved) {
           setProject(saved);
@@ -367,6 +381,9 @@ export default function App() {
           : "Centred, beam off.";
       }
       case "point_at": {
+        if (challenge && challengeHintRef.current < 3) {
+          return `This is a troubleshooting challenge. Unlock hint 3 before I point at the exact answer.`;
+        }
         const hole = String(args.hole ?? "").trim().toUpperCase();
         // An empty argument means "whatever you just told them to do", which is
         // the common case and saves the model having to restate a hole.
@@ -463,6 +480,12 @@ export default function App() {
     const opts = {
       plan: planRef.current,
       step: stepRef.current,
+      challenge: challenge ? {
+        title: challenge.title,
+        prompt: challenge.prompt,
+        hintLevel: challengeHintRef.current,
+        hints: challenge.hints.map((hint) => hint.text),
+      } : undefined,
       onTool: handleTool,
       onStatus: (st: RealtimeStatus, err?: string) => { setVoice(st); if (err) setVoiceErr(err); },
       onUtterance: (u: Utterance) => setTalk((t) => {
@@ -499,8 +522,14 @@ export default function App() {
   useEffect(() => {
     if (!sessionRef.current?.live) return;
     sessionRef.current.refreshContext(
-      plan, step, haveMap ? guidanceText(plan, worldRef.current, guidanceRef.current) : undefined);
-  }, [plan, step, haveMap, advice]);
+      plan, step, haveMap ? guidanceText(plan, worldRef.current, guidanceRef.current) : undefined,
+      challenge ? {
+        title: challenge.title,
+        prompt: challenge.prompt,
+        hintLevel: challengeHint,
+        hints: challenge.hints.map((hint) => hint.text),
+      } : undefined);
+  }, [plan, step, haveMap, advice, challenge, challengeHint]);
 
   useEffect(() => () => sessionRef.current?.disconnect(), []);
 
@@ -724,6 +753,30 @@ export default function App() {
         </div>
 
         <a className="docs-trigger" href="/docs">Docs</a>
+        <a className="hub-trigger" href="/hub" aria-label="Arduino Learning Hub"
+          title="Arduino Learning Hub">?</a>
+
+        {challenge && (
+          <aside className="workbench-challenge" aria-label="Troubleshooting challenge">
+            <span>3D FAULT LAB</span>
+            <strong>{challenge.title}</strong>
+            <p>{challenge.prompt}</p>
+            <small>Hint {challengeHint}: {challenge.hints[challengeHint - 1].text}</small>
+            <div>
+              <a href={`/hub/challenges/${challenge.id}`}>View the case</a>
+              <button disabled={challengeHint >= 3}
+                onClick={() => setChallengeHint((level) => {
+                  const next = Math.min(3, level + 1);
+                  let saved: Record<string, number> = {};
+                  try { saved = JSON.parse(localStorage.getItem("laser-buddy:hub-hints:v1") ?? "{}"); } catch { /* start clean */ }
+                  localStorage.setItem("laser-buddy:hub-hints:v1", JSON.stringify({ ...saved, [challenge.id]: next }));
+                  return next;
+                })}>
+                {challengeHint >= 3 ? "Exact target unlocked" : `Unlock hint ${challengeHint + 1}`}
+              </button>
+            </div>
+          </aside>
+        )}
 
         {mode === "plan" && (
           <>

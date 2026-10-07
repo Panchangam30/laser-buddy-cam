@@ -379,7 +379,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
    as a single layer of glass above the work rather than four unrelated
    widgets that happen to sit at the same height. */
 
-.viewswitch, .components-trigger, .docs-trigger, .part-actions,
+.viewswitch, .components-trigger, .docs-trigger, .hub-trigger, .part-actions,
 .simulation-trigger, .simulation-more {
   background: rgba(22, 24, 27, .78);
   border: 1px solid var(--rule);
@@ -387,7 +387,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
 }
 
 .viewswitch {
-  position: absolute; z-index: 8; top: 16px; right: 92px;
+  position: absolute; z-index: 8; top: 16px; right: 142px;
   display: flex; gap: 2px; border-radius: var(--r-pill); padding: 3px;
 }
 .viewswitch button {
@@ -500,6 +500,32 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
   transition: color .12s ease, border-color .12s ease;
 }
 .docs-trigger:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+.hub-trigger {
+  position: absolute; z-index: 8; top: 16px; right: 91px; display: grid;
+  place-items: center; width: 36px; height: 36px; border-radius: var(--r-sm);
+  color: var(--signal); font: 800 15px/1 var(--mono); text-decoration: none;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.hub-trigger:hover { border-color: var(--signal); background: rgba(45, 38, 12, .88); }
+
+.workbench-challenge {
+  position: absolute; z-index: 7; top: 65px; right: 16px; width: 285px;
+  padding: 15px; border: 1px solid #544824; border-radius: var(--r-md);
+  background: rgba(27, 26, 20, .94); backdrop-filter: blur(15px);
+}
+.workbench-challenge > span { color: var(--signal); font-size: 8px; font-weight: 800; letter-spacing: .12em; }
+.workbench-challenge > strong { display: block; margin-top: 3px; font-size: 13px; }
+.workbench-challenge > p { margin: 5px 0 11px; color: var(--ink-dim); font-size: 10px; line-height: 1.45; }
+.workbench-challenge > small { display: block; margin: -3px 0 11px; padding: 7px 8px; border-left: 2px solid var(--signal); color: #bbb6a1; background: #211f16; font-size: 9px; line-height: 1.45; }
+.workbench-challenge > div { display: flex; gap: 6px; }
+.workbench-challenge a, .workbench-challenge button {
+  flex: 1; padding: 6px; border: 1px solid var(--rule); border-radius: 6px;
+  color: var(--ink-dim); background: var(--raised); text-align: center;
+  text-decoration: none; font-size: 9px;
+}
+.workbench-challenge button:not(:disabled) { color: var(--signal); border-color: #544824; }
+.workbench-challenge button:disabled { opacity: .55; cursor: default; }
 
 .part-actions {
   position: absolute; z-index: 6; top: 62px; right: 16px;
@@ -718,10 +744,12 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
 
   /* Two rows of chrome rather than one: at this width the view switch and the
      triggers cannot share a line without overlapping. */
-  .components-trigger, .docs-trigger { top: 14px; }
+  .components-trigger, .docs-trigger, .hub-trigger { top: 14px; }
   .components-trigger { left: 14px; }
   .docs-trigger { right: 14px; }
+  .hub-trigger { right: 89px; }
   .viewswitch { top: 62px; right: 14px; }
+  .workbench-challenge { top: 108px; right: 14px; width: min(285px, calc(100% - 28px)); }
   .part-actions { top: 62px; left: 14px; right: auto; }
 
   .components-drawer, .boardmap {

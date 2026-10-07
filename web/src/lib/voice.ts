@@ -9,6 +9,13 @@ export interface Utterance {
   replace?: boolean;
 }
 
+export interface ChallengeVoiceContext {
+  title: string;
+  prompt: string;
+  hintLevel: number;
+  hints: string[];
+}
+
 /** Tools the model can call to drive the 3D view or look through the camera. */
 export const TOOLS = [
   {
@@ -141,7 +148,8 @@ export const TOOLS = [
 ] as const;
 
 /** System prompt, rebuilt whenever the plan, the step or the board changes. */
-export function buildInstructions(plan: Plan, step: number, live?: string): string {
+export function buildInstructions(plan: Plan, step: number, live?: string,
+  challenge?: ChallengeVoiceContext): string {
   const parts = plan.parts
     .map((p) => `  ${p.id}: ${p.label} (${p.kind}) in ${p.pins.join(" and ")}`)
     .join("\n") || "  (none yet)";
@@ -173,6 +181,14 @@ STEPS:
 ${steps}
 
 The student is looking at step ${step} right now.
+
+${challenge ? `TROUBLESHOOTING CHALLENGE: ${challenge.title}
+${challenge.prompt}
+The learner has unlocked hint level ${challenge.hintLevel} of 3.
+You may use only these unlocked hints: ${challenge.hints.slice(0, challenge.hintLevel).join(" | ")}
+Do not reveal a later hint or the exact faulty hole before hint level 3. Ask a
+short guiding question instead. At hint level 3 you may name and point to the
+exact connection.` : ""}
 
 ${live ? `ON THE BOARD RIGHT NOW (measured from the board's own grid, updating live):
 ${live}` : `You have no live view of the board yet. Use check_progress to get one.`}
@@ -211,6 +227,7 @@ above will say so.`;
 export interface VoiceOpts {
   plan: Plan;
   step: number;
+  challenge?: ChallengeVoiceContext;
   /** Provider voice id (Grok only; OpenAI's voice is fixed at token time). */
   voice?: string;
   onTool: (name: string, args: Record<string, unknown>) => Promise<string>;
@@ -224,7 +241,7 @@ export interface VoiceSession {
   connect(): Promise<void>;
   disconnect(): void;
   setMuted(muted: boolean): void;
-  refreshContext(plan: Plan, step: number, live?: string): void;
+  refreshContext(plan: Plan, step: number, live?: string, challenge?: ChallengeVoiceContext): void;
   sendText(text: string): void;
   sendImage(dataUrl: string, note?: string): void;
 }
