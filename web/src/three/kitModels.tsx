@@ -112,8 +112,8 @@ export function UnoModel({ selected }: ModelProps) {
         <boxGeometry args={[5, 3, 5]} />
         <meshStandardMaterial color="#b02a2a" roughness={0.45} />
       </mesh>
-      <Header count={10} z={-24} />
-      <Header count={8} z={24} />
+      <group position={[-14, 0, 0]}><Header count={10} z={24} /><Header count={8} z={-24} /></group>
+      <group position={[14, 0, 0]}><Header count={8} z={24} /><Header count={6} z={-24} /></group>
       <Text position={[12, 0.95, 20]} rotation={[-Math.PI / 2, 0, 0]}
             fontSize={4.5} color="#dff6f8" anchorX="center">UNO</Text>
     </group>

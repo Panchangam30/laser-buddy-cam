@@ -37,11 +37,16 @@ function portLocal(device: ExternalDevice, portId: string, portIndex: number): V
   const id = normalize(portId).replace(/[^A-Z0-9]/g, "");
   if (device.kind === "arduino-uno") {
     const arduino: Record<string, Vec3> = {
-      D2: { x: 8.9, y: 5.4, z: 24 },
-      D9: { x: 0, y: 5.4, z: 24 },
-      D13: { x: -8.9, y: 5.4, z: 24 },
-      "5V": { x: -5.1, y: 5.4, z: -24 },
-      GND: { x: 2.5, y: 5.4, z: -24 },
+      D2: { x: 17.81, y: 5.4, z: 24 },
+      D5: { x: 10.19, y: 5.4, z: 24 },
+      D6: { x: 7.65, y: 5.4, z: 24 },
+      D8: { x: -2.57, y: 5.4, z: 24 },
+      D9: { x: -5.11, y: 5.4, z: 24 },
+      D10: { x: -7.65, y: 5.4, z: 24 },
+      D13: { x: -15.27, y: 5.4, z: 24 },
+      "5V": { x: -12.73, y: 5.4, z: -24 },
+      GND: { x: -10.19, y: 5.4, z: -24 },
+      A0: { x: 7.65, y: 5.4, z: -24 },
     };
     return arduino[id] ?? { x: -8.9 + portIndex * 2.54, y: 5.4, z: 24 };
   }

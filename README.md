@@ -148,6 +148,16 @@ project and its current/manual step progress survive reloads; camera images are
 not stored. A successful bench scan creates a project, while a failed scan leaves
 the last good project alone.
 
+The **Frequently searched ideas** section offers 50 authored beginner tutorials
+(10 each for servos, LEDs, buttons, analog inputs, and sound), including the
+button-controlled servo sweep. Search or filter the compact card grid and click
+to create a separate local project with step-by-step 3D wiring, required parts,
+Arduino code, and an observable test. These are curated ideas, not tracked search
+rankings. Loading a card or entering its exact title needs no API key or network
+request. The 3D view is a wiring guide, not an electrical or code simulator.
+Servo lessons use a separate regulated 5 V supply with a common ground; sound
+lessons require a small passive piezo, not a loudspeaker or active buzzer.
+
 In **Projects**, use **Export JSON** to download the current plan, required
 parts, code artifacts, and progress. **Import JSON** adds a separate local copy
 without overwriting existing projects. **Create share link** packages the same
@@ -170,7 +180,8 @@ images, audio, account, or remote database are required.
 The Projects panel also accepts named goals. Goal plans come from a verified,
 deterministic catalog and include requirements, safety warnings, code and manual
 test steps. Unsupported goals are refused rather than receiving model-invented
-wiring. The initial catalog includes the button-controlled servo sweep.
+wiring. The original server goal matcher supports the button-controlled servo
+sweep; the 50 local tutorials can also be loaded by their exact titles or IDs.
 
 ### Workspace capabilities
 

@@ -701,6 +701,24 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
 .project-panel h3 { margin: 0; font-size: 13px; }
 .project-panel .eyebrow { color: var(--signal); font: 10px var(--mono); letter-spacing: .12em; }
 .project-panel .closebtn { width: 34px; height: 34px; padding: 0; font-size: 21px; }
+.tutorial-catalog { margin-top: 22px; }
+.tutorial-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tutorial-heading h3 { margin-top: 5px; font-size: 17px; }
+.tutorial-count { flex-shrink: 0; padding: 6px 9px; border-radius: var(--r-sm); background: var(--signal); color: var(--signal-ink); font: 11px var(--mono); }
+.tutorial-catalog > p { font-size: 12px; line-height: 1.6; color: var(--ink-dim); }
+.tutorial-search { display: grid; gap: 7px; font-size: 12px; }
+.tutorial-search input { width: 100%; box-sizing: border-box; border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 10px 12px; background: var(--chassis); color: var(--ink); font: inherit; }
+.tutorial-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.tutorial-filters button[aria-pressed="true"] { border-color: var(--signal); color: var(--signal); background: var(--chassis); }
+.tutorial-results { display: block; margin: 8px 0; color: var(--ink-faint); font-size: 11px; }
+.tutorial-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 290px; overflow-y: auto; overscroll-behavior: contain; padding: 3px 5px 5px 3px; }
+.project-panel .tutorial-card { display: flex; flex-direction: column; align-items: stretch; gap: 7px; padding: 13px; text-align: left; background: var(--chassis); min-height: 148px; }
+.tutorial-card strong { font-size: 13px; line-height: 1.4; }
+.tutorial-card > span:not(.tutorial-category) { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
+.tutorial-card .tutorial-category { display: flex; justify-content: space-between; color: var(--signal); font: 10px var(--mono); }
+.tutorial-card small { margin-top: auto; font-size: 10px; color: var(--ink-faint); }
+.tutorial-card:hover:not(:disabled), .tutorial-card:focus-visible { border-color: var(--signal); }
+@media (max-width: 480px) { .tutorial-grid { grid-template-columns: 1fr; } .tutorial-heading { align-items: flex-start; } }
 .goal-form {
   margin: 22px 0; padding: 16px; border: 1px solid var(--rule);
   border-radius: var(--r-lg); background: var(--chassis);

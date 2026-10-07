@@ -777,6 +777,7 @@ export default function App() {
             Math.max(-74, Math.min(74, x)), Math.max(-45, Math.min(45, z))));
         }}>
         <Scene plan={displayPlan} step={displayStep} exploded={exploded}
+               paused={projectsOpen}
                mode={mode} world={displayWorld} guidance={displayGuidance} labels={labels}
                kitParts={kitParts} selectedKitPart={selectedKitPart}
                simulation={{ running: simulationRunning, powered: simulationPowered, rate: simulationRate,

@@ -1,6 +1,10 @@
 import { useState } from "react";
 import type { Project } from "../lib/types";
 import { downloadProject, importProject, projectShareLink, MAX_PROJECT_BYTES } from "../lib/sharing";
+import { buildTutorial, TUTORIALS, type TutorialCategory } from "../lib/tutorials";
+import { createProject, normalizePlan } from "../lib/plans";
+
+const CATEGORIES: Array<TutorialCategory | "All"> = ["All", "Servos", "LEDs", "Buttons", "Analog", "Sound"];
 
 export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
   onGoal, onExample, onDelete, activeProject, onImport,
@@ -22,6 +26,20 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
   const [shareLink, setShareLink] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<TutorialCategory | "All">("All");
+  const [loadingTutorial, setLoadingTutorial] = useState("");
+  const [tutorialError, setTutorialError] = useState("");
+  const locked = busy || importing || Boolean(loadingTutorial);
+  const matches = TUTORIALS.filter((item) => (category === "All" || item.category === category)
+    && search.trim().toLowerCase().split(/\s+/).every((word) => `${item.title} ${item.description} ${item.category}`.toLowerCase().includes(word)));
+  async function loadTutorial(id: string) {
+    if (locked) return;
+    setLoadingTutorial(id); setTutorialError("");
+    try { await onImport(createProject(normalizePlan(buildTutorial(id)))); }
+    catch (error) { setTutorialError(error instanceof Error ? error.message : "Could not load this tutorial."); }
+    finally { setLoadingTutorial(""); }
+  }
 
   return (
     <div className="project-scrim" role="presentation" onMouseDown={(event) => {
@@ -33,16 +51,42 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
           <button className="closebtn" onClick={onClose} aria-label="Close projects">×</button>
         </header>
 
+        <section className="tutorial-catalog" aria-label="Arduino tutorials">
+          <div className="tutorial-heading"><div><span className="eyebrow">FREQUENTLY SEARCHED IDEAS</span>
+            <h3>Pick a project. Start building.</h3></div><span className="tutorial-count">50 tutorials</span></div>
+          <p>Explore 50 beginner-friendly Arduino ideas. Every card opens a 3D wiring guide, parts list, and sketch. No account or API key needed.</p>
+          <label className="tutorial-search" htmlFor="tutorial-search">Find a tutorial
+            <input id="tutorial-search" type="search" placeholder="Try servo, blinking lights, or a button…"
+              value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+          <div className="tutorial-filters" role="group" aria-label="Tutorial categories">
+            {CATEGORIES.map((value) => <button key={value} aria-pressed={category === value}
+              onClick={() => setCategory(value)}>{value}</button>)}
+          </div>
+          <span className="tutorial-results" role="status">{matches.length} of 50 tutorials</span>
+          <div className="tutorial-grid" aria-busy={Boolean(loadingTutorial)}>
+            {matches.map((item) => <button className="tutorial-card" key={item.id} disabled={locked}
+              onClick={() => void loadTutorial(item.id)} aria-label={`Load ${item.title}`}>
+              <span className="tutorial-category">{item.category} <span aria-hidden="true">↗</span></span>
+              <strong>{item.title}</strong><span>{item.description}</span>
+              <small>{loadingTutorial === item.id ? "Opening…" : "3D guide · Code · Parts"}</small>
+            </button>)}
+            {!matches.length && <p className="empty">No matches yet. Try “LED”, “servo”, or another category.</p>}
+          </div>
+          {tutorialError && <p className="error" role="alert">{tutorialError}</p>}
+        </section>
+
         <form className="goal-form" onSubmit={(event) => {
           event.preventDefault();
           const value = goal.trim();
-          if (value) void onGoal(value);
+          const tutorial = TUTORIALS.find((item) => item.title.toLowerCase() === value.toLowerCase() || item.id === value.toLowerCase());
+          if (tutorial) void loadTutorial(tutorial.id);
+          else if (value && !locked) void onGoal(value);
         }}>
           <label htmlFor="project-goal">Start from a named goal</label>
           <div>
             <input id="project-goal" value={goal} onChange={(event) => setGoal(event.target.value)}
-              placeholder="Make a servo sweep on a button press" disabled={busy} />
-            <button disabled={busy || !goal.trim()}>{busy ? "Building…" : "Build plan"}</button>
+              placeholder="Make a servo sweep on a button press" disabled={locked} />
+            <button disabled={locked || !goal.trim()}>{busy ? "Building…" : "Build plan"}</button>
           </div>
           <p>Goals outside the verified catalog are refused rather than given guessed wiring.</p>
           {error && <p className="error">{error}</p>}

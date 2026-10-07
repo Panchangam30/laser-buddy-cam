@@ -23,7 +23,7 @@ const NO_DEVICES: NonNullable<Plan["devices"]> = [];
 
 export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
-  highlightPartIds = [],
+  highlightPartIds = [], paused = false,
   simulation = { running: false, powered: true, rate: 1, includedIds: [] },
   onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {},
 }: {
@@ -34,6 +34,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   world: World;
   guidance: Guidance;
   labels: boolean;
+  /** The project picker covers the scene; avoid spending frames behind it. */
+  paused?: boolean;
   kitParts?: PlacedKitPart[];
   simulation?: SimulationState;
   selectedKitPart?: string | null;
@@ -66,6 +68,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   return (
     <Canvas
       data-testid="assembly-scene"
+      frameloop={paused ? "never" : "always"}
       data-device-ids={visibleDeviceIds}
       data-part-ids={visiblePartIds}
       shadows
