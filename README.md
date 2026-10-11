@@ -11,6 +11,20 @@ reads the holes off the board's own grid rather than asking a model to guess
 coordinates. The laser then works because the map and the head are calibrated
 against each other through the camera, so "point at E20" is a real instruction.
 
+### Two modes
+
+- **Anything on the desk** (default). Point the camera at the desk and press
+  **Track objects**. The vision model names what is in view (phone, pencil,
+  mug...), OpenCV follows each object between looks, and the laser can **Point**
+  at or **Follow** any of them. Calibration needs no breadboard: it learns
+  camera pixels → servo angles by watching the dot on the desk, and every point
+  is then corrected closed-loop by blinking the laser and measuring the miss.
+  See `vision/objects.py`.
+- **Breadboard**. The original circuit-building mode described below.
+
+The switch is at the top of **Devices**. The voice assistant uses a different
+prompt and set of tools in each mode.
+
 ## Running it
 
 ```sh

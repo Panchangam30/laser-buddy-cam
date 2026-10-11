@@ -18,6 +18,8 @@ export interface Calibration {
   samples: number;
   /** How far the dot lands from where it was aimed, in millimetres. */
   rmsMm: number | null;
+  /** Object-mode calibration reports its miss in camera pixels instead. */
+  rmsPx?: number | null;
   checked: number;
   at: number;
   /** The same number said in holes, which is the unit that matters. */
@@ -36,6 +38,10 @@ export interface LaserStatus {
   /** The hole it is currently pointing at, if any. */
   aimedAt: string;
   calibration: Calibration;
+  /** The board-free camera-pixel calibration used in object mode. */
+  pixelCalibration?: Calibration;
+  /** Id of the object the beam is following, or "". */
+  following?: string;
   /** A serial port that looks like the Arduino, whether or not we are on it. */
   portAvailable: string | null;
 }

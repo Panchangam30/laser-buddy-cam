@@ -1,5 +1,5 @@
 import type { Plan } from "./types";
-import { buildInstructions, TOOLS, type VoiceOpts, type VoiceSession } from "./voice";
+import { instructionsFor, toolsFor, type VoiceOpts, type VoiceSession } from "./voice";
 
 /**
  * One Realtime voice session over WebRTC.
@@ -27,11 +27,11 @@ export class OpenAIVoiceSession implements VoiceSession {
   async connect() {
     this.opts.onStatus("connecting");
     try {
-      const instructions = buildInstructions(this.opts.plan, this.opts.step, undefined, this.opts.challenge);
+      const instructions = instructionsFor(this.opts);
       const tr = await fetch("/api/realtime-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instructions, tools: TOOLS }),
+        body: JSON.stringify({ instructions, tools: toolsFor(this.opts.mode) }),
       });
       const tok = await tr.json();
       if (!tr.ok) throw new Error(tok.detail || tok.error || `token HTTP ${tr.status}`);
@@ -97,7 +97,7 @@ export class OpenAIVoiceSession implements VoiceSession {
     this.opts.challenge = challenge;
     this.send({
       type: "session.update",
-      session: { type: "realtime", instructions: buildInstructions(plan, step, live, challenge) },
+      session: { type: "realtime", instructions: instructionsFor(this.opts, live) },
     });
   }
 

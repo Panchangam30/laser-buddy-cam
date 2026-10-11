@@ -16,6 +16,16 @@ Endpoints
     POST /vision/orientation  {"flipped": true} -- which end holds column 1
     POST /vision/reset        forget every tracked part
     GET  /vision/health
+
+  Object mode (any object on the desk, no breadboard needed -- see objects.py)
+    POST /vision/objects/analyze   {"image": ...} -> tracked objects
+    GET  /vision/objects           the last object snapshot
+    POST /vision/objects/detect    {"image"?: ...} -- identify now and wait
+    POST /vision/objects/point     {"object": "phone"} -- aim, closed loop
+    POST /vision/objects/follow    {"object": "phone"} -- keep the beam on it
+    POST /vision/objects/unfollow
+    POST /vision/objects/reset
+    POST /vision/laser/calibrate   {"mode": "pixels"} for the board-free map
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ import cv2
 import numpy as np
 
 from . import board as bd
-from . import geometry as g, label, world, workspace as ws
+from . import geometry as g, label, objects, world, workspace as ws
 from .aim import Calibrator, find_dot
 from .laser import LaserLink, find_port
 from .track import Tracker
@@ -92,6 +102,87 @@ class VisionEngine:
         self._pose: bd.BoardPose | bd.NoBoard = bd.NoBoard("no frame analysed yet")
         self._world = world.World(board={"found": False, "reason": "no frame analysed yet"})
         self._errors: list[str] = []
+        self.scene = objects.ObjectScene(api_key)
+        self.pixel_cal = objects.PixelCalibrator()
+        self.follower = objects.Follower()
+
+    # ------------------------------------------------------------ object mode
+
+    def analyse_objects(self, frame: np.ndarray) -> dict:
+        with self._lock:
+            self._frames += 1
+            self._frame = frame
+            self._frame_at = time.time()
+        return self.scene.update(frame)
+
+    def _frame_size(self) -> tuple[int, int]:
+        w, h = self.scene.size
+        if not w and self._frame is not None:
+            h, w = self._frame.shape[:2]
+        return w, h
+
+    def _pixel_aimer(self):
+        w, h = self._frame_size()
+        if not w:
+            return None, "No camera frames yet. Turn on tracking first."
+        aimer = self.pixel_cal.aimer_for(w, h)
+        if not aimer.ready:
+            return None, "The laser has not been calibrated for object mode yet."
+        return aimer, ""
+
+    def point_at_object(self, query: str, refine: bool = True) -> dict:
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        obj = self.scene.find(query)
+        if obj is None:
+            names = ", ".join(o.label for o in self.scene.objects) or "nothing yet"
+            return {"ok": False, "error": f"I cannot find {query!r}. I can see: {names}."}
+        aimer, why = self._pixel_aimer()
+        if aimer is None:
+            return {"ok": False, "error": why}
+        if self.pixel_cal.running:
+            return {"ok": False, "error": "Calibration is running."}
+        self.follower.stop()
+        target = obj.centre
+        if not aimer.covers(*target):
+            return {"ok": False, "error":
+                    f"The {obj.label} is outside the area the laser can reach."}
+        r = objects.aim_closed_loop(self.laser, aimer, self.next_frame, target, refine)
+        if r.get("ok"):
+            aimer.save()
+            with self._lock:
+                self._aimed_hole = obj.label
+        return {**r, "object": obj.id, "label": obj.label}
+
+    def follow_object(self, query: str) -> dict:
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        obj = self.scene.find(query)
+        if obj is None:
+            return {"ok": False, "error": f"I cannot find {query!r}."}
+        aimer, why = self._pixel_aimer()
+        if aimer is None:
+            return {"ok": False, "error": why}
+        self.follower.start(obj.id, self.scene, self.laser, aimer)
+        with self._lock:
+            self._aimed_hole = obj.label
+        return {"ok": True, "object": obj.id, "label": obj.label}
+
+    def start_pixel_calibration(self) -> dict:
+        if not self.laser.connected and not self.laser.connect():
+            return {"ok": False, "error": self.laser.error or "The laser is not connected."}
+        if self._frame is None or time.time() - self._frame_at > 3.0:
+            return {"ok": False, "error":
+                    "No recent camera frames. Turn on tracking and keep it running."}
+        if not self.pixel_cal.claim():
+            return {"ok": False, "error": "Already calibrating."}
+        self.follower.stop()
+        threading.Thread(target=self.pixel_cal.run,
+                         args=(self.laser, self.next_frame, self._frame_size()),
+                         daemon=True).start()
+        return {"ok": True}
 
     # ------------------------------------------------------------------ analyse
 
@@ -267,6 +358,7 @@ class VisionEngine:
         return {"ok": self.laser.set_laser(bool(on)), "laserOn": self.laser.laser_on}
 
     def laser_off(self) -> dict:
+        self.follower.stop()
         if not self.laser.connected:
             # Deliberately no reconnect: a disconnected laser is already off,
             # and opening the port resets the board, which is a strange thing
@@ -311,6 +403,8 @@ class VisionEngine:
         return {**self.laser.status(),
                 "aimedAt": self._aimed_hole,
                 "calibration": self.calibrator.status(),
+                "pixelCalibration": self.pixel_cal.status(*self._frame_size()),
+                "following": self.follower.target_id,
                 "portAvailable": find_port()}
 
     def start_calibration(self) -> dict:
@@ -518,6 +612,15 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.laser_status())
             if path == "/vision/remote":
                 return self._json(200, engine.take_remote())
+            if path == "/vision/objects":
+                return self._json(200, engine.scene.snapshot())
+            if path == "/vision/debug.jpg" and "view=objects" in query:
+                frame = engine._frame
+                if frame is None:
+                    return self._json(404, {"error": "no frame analysed yet"})
+                img = engine.scene.annotate(frame.copy())
+                ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                return self._send(200, buf.tobytes(), "image/jpeg")
             if path == "/vision/debug.jpg":
                 view = "frame" if "view=frame" in query else "rect"
                 img = engine.debug_image(view)
@@ -546,6 +649,39 @@ def make_handler(engine: VisionEngine):
                 except Exception as e:
                     return self._json(400, {"error": str(e)})
                 return self._json(200, engine.analyse(frame))
+
+            if self.path in ("/vision/objects/analyze", "/vision/objects/detect"):
+                image = body.get("image")
+                frame = None
+                if isinstance(image, str) and image:
+                    try:
+                        frame = decode_data_url(image)
+                    except Exception as e:
+                        return self._json(400, {"error": str(e)})
+                if self.path.endswith("detect"):
+                    if frame is not None:
+                        engine.analyse_objects(frame)
+                    return self._json(200, engine.scene.detect_now(
+                        frame if frame is not None else engine._frame))
+                if frame is None:
+                    return self._json(400, {"error": "no image supplied"})
+                return self._json(200, engine.analyse_objects(frame))
+
+            if self.path == "/vision/objects/point":
+                return self._json(200, engine.point_at_object(
+                    str(body.get("object", "")), refine=body.get("refine", True) is not False))
+
+            if self.path == "/vision/objects/follow":
+                return self._json(200, engine.follow_object(str(body.get("object", ""))))
+
+            if self.path == "/vision/objects/unfollow":
+                engine.follower.stop()
+                return self._json(200, {"ok": True})
+
+            if self.path == "/vision/objects/reset":
+                engine.follower.stop()
+                engine.scene.reset()
+                return self._json(200, {"ok": True})
 
             if self.path == "/vision/orientation":
                 return self._json(200, engine.set_flipped(bool(body.get("flipped"))))
@@ -599,10 +735,13 @@ def make_handler(engine: VisionEngine):
                                         **engine.laser_status()})
 
             if self.path == "/vision/laser/calibrate":
+                if body.get("mode") == "pixels":
+                    return self._json(200, engine.start_pixel_calibration())
                 return self._json(200, engine.start_calibration())
 
             if self.path == "/vision/laser/cancel":
                 engine.calibrator.cancel()
+                engine.pixel_cal.cancel()
                 return self._json(200, {"ok": True})
 
             if self.path == "/vision/reset":

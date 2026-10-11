@@ -1,4 +1,5 @@
 import type { Plan } from "./types";
+import type { TrackMode } from "./objects";
 
 export type RealtimeStatus = "idle" | "connecting" | "live" | "error";
 
@@ -147,6 +148,99 @@ export const TOOLS = [
   },
 ] as const;
 
+/** Laser tools shared by both modes. */
+const LASER_TOOLS = TOOLS.filter((t) =>
+  ["move_laser", "laser_power", "centre_laser"].includes(t.name));
+
+/** Tools for object mode: anything on the desk, no breadboard. */
+export const OBJECT_TOOLS = [
+  {
+    type: "function",
+    name: "describe_scene",
+    description: "Look through the camera right now and list every object on the "
+      + "desk, with where each one is. Use this whenever the user asks what you "
+      + "can see, asks about something you have not seen yet, or says they have "
+      + "put something new down. It takes a fresh look, so trust it over the "
+      + "list in your instructions.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
+    name: "point_at_object",
+    description: "Shine the laser on one object on the desk. Name it the way the "
+      + "user did ('the phone', 'yellow pencil') or by its id ('obj3'). The laser "
+      + "checks itself through the camera and corrects its aim, so this takes a "
+      + "couple of seconds.",
+    parameters: {
+      type: "object",
+      properties: { object: { type: "string", description: "e.g. 'phone' or 'obj2'" } },
+      required: ["object"],
+    },
+  },
+  {
+    type: "function",
+    name: "follow_object",
+    description: "Keep the laser on an object while it moves -- for 'follow my "
+      + "phone' or 'track the pencil'. Stays on until stop_following or laser off.",
+    parameters: {
+      type: "object",
+      properties: { object: { type: "string", description: "e.g. 'phone' or 'obj2'" } },
+      required: ["object"],
+    },
+  },
+  {
+    type: "function",
+    name: "stop_following",
+    description: "Stop following an object. The beam stays where it is.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
+    name: "look_closely",
+    description: "Take a full photo through the webcam and look at it yourself. "
+      + "Use this for questions describe_scene cannot answer: reading text on "
+      + "something, its colour or condition, what is on a screen.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  ...LASER_TOOLS,
+];
+
+export function toolsFor(mode: TrackMode = "objects") {
+  return mode === "board" ? TOOLS : OBJECT_TOOLS;
+}
+
+/** System prompt for object mode. */
+export function buildObjectInstructions(live?: string): string {
+  return `You are a friendly desk assistant with a webcam and a laser pointer on a
+pan/tilt head. You can see the user's desk and point the laser at anything on
+it: a phone, a pencil, a mug, a tool, a cable.
+
+SPEAK LIKE A PERSON SITTING NEXT TO THEM. Short answers, one or two sentences.
+No lists, no preamble, no "great question".
+
+WHAT YOU CAN SEE. The list below is kept up to date by an object tracker: the
+vision model names each object and OpenCV follows it between looks. Each has an
+id like obj3 and a position in words ("near left" means close to the camera,
+on the left of the picture). It is your memory of the desk, and it can be a
+few seconds stale. When the user asks what you see, or mentions something not
+in the list, call describe_scene to take a fresh look before answering. Never
+claim to see an object that is not in the list or in a photo you were given,
+and never guess text you cannot read -- use look_closely for that.
+
+THE LASER. When the user asks where something is, or asks you to show, point
+at, or highlight something, call point_at_object -- pointing is better than
+describing. For "follow" or "track" it, call follow_object. "Left a bit", "up",
+"further right", "centre it" are move_laser with a direction and an amount.
+Move first and speak after, so the beam and your words arrive together. If a
+tool says the laser is not calibrated, tell them to press Calibrate in the
+Laser panel and keep the desk in view; it takes a couple of minutes. If it says
+an object is out of reach, say so plainly. Never shine the beam at a person's
+face; if the object is a person or a face, refuse to point at it.
+
+${live ? `ON THE DESK RIGHT NOW:
+${live}` : "You have not looked at the desk yet. Call describe_scene."}`;
+}
+
 /** System prompt, rebuilt whenever the plan, the step or the board changes. */
 export function buildInstructions(plan: Plan, step: number, live?: string,
   challenge?: ChallengeVoiceContext): string {
@@ -225,6 +319,8 @@ above will say so.`;
 }
 
 export interface VoiceOpts {
+  /** What is being tracked: anything on the desk, or a breadboard build. */
+  mode?: TrackMode;
   plan: Plan;
   step: number;
   challenge?: ChallengeVoiceContext;
@@ -233,6 +329,13 @@ export interface VoiceOpts {
   onTool: (name: string, args: Record<string, unknown>) => Promise<string>;
   onStatus: (s: RealtimeStatus, err?: string) => void;
   onUtterance: (u: Utterance) => void;
+}
+
+/** The system prompt for whichever mode the session is in. */
+export function instructionsFor(opts: VoiceOpts, live?: string): string {
+  return opts.mode === "board"
+    ? buildInstructions(opts.plan, opts.step, live, opts.challenge)
+    : buildObjectInstructions(live);
 }
 
 /** What the app needs from a voice provider, whoever it is. */

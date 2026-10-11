@@ -32,10 +32,18 @@ import { challengeById } from "./hub/content";
 import { projectFromLink } from "./lib/sharing";
 import { StableBoardRecorder, REPLAY_LIMIT } from "./lib/replay";
 import { ReplayPanel } from "./ui/ReplayPanel";
+import { ObjectPanel, ObjectView } from "./ui/ObjectPanel";
+import {
+  analyseObjects, detectObjects, followObject, pointAtObject, resetObjects, unfollowObject,
+  EMPTY_SCENE, type Scene as ObjectScene, type TrackMode,
+} from "./lib/objects";
 import "./App.css";
 
 /** How often a frame goes to the vision service while tracking is on. */
 const TRACK_INTERVAL_MS = 450;
+/** Object mode posts faster: the laser calibrates and corrects off these frames. */
+const OBJECT_INTERVAL_MS = 180;
+const MODE_KEY = "laser-buddy:track-mode:v1";
 
 export default function App() {
   const challenge = challengeById(new URLSearchParams(window.location.search).get("challenge"));
@@ -67,6 +75,14 @@ export default function App() {
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const recorder = useRef(new StableBoardRecorder());
   const [tracking, setTracking] = useState(false);
+  // What is being tracked. Anything on the desk by default; the breadboard
+  // build is the specialised mode.
+  const [trackMode, setTrackMode] = useState<TrackMode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === "board" ? "board" : "objects"; } catch { return "objects"; }
+  });
+  const [scene, setScene] = useState<ObjectScene>(EMPTY_SCENE);
+  const sceneRef = useRef(scene); sceneRef.current = scene;
+  const trackModeRef = useRef(trackMode); trackModeRef.current = trackMode;
   const [visionErr, setVisionErr] = useState("");
   const [mode, setMode] = useState<ViewMode>("plan");
   const [labels, setLabels] = useState(true);
@@ -307,9 +323,15 @@ export default function App() {
       if (frame) {
         inFlight = true;
         try {
-          const observed = await analyseFrame(frame);
-          if (stopped) return;
-          setWorld(observed);
+          if (trackModeRef.current === "objects") {
+            const seen = await analyseObjects(frame);
+            if (stopped) return;
+            setScene(seen);
+          } else {
+            const observed = await analyseFrame(frame);
+            if (stopped) return;
+            setWorld(observed);
+          }
           setVisionErr("");
           failures = 0;
         } catch (e) {
@@ -321,13 +343,14 @@ export default function App() {
       }
       if (!stopped) {
         const backoff = Math.min(failures, 5) * 1500;
-        timer = window.setTimeout(tick, TRACK_INTERVAL_MS + backoff);
+        const interval = trackModeRef.current === "objects" ? OBJECT_INTERVAL_MS : TRACK_INTERVAL_MS;
+        timer = window.setTimeout(tick, interval + backoff);
       }
     };
 
     timer = window.setTimeout(tick, 0);
     return () => { stopped = true; window.clearTimeout(timer); };
-  }, [tracking, project.id]);
+  }, [tracking, project.id, trackMode]);
 
   /**
    * Act on commands from the phone remote.
@@ -374,6 +397,48 @@ export default function App() {
 
   async function handleTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
+      case "describe_scene": {
+        try {
+          if (!tracking) setTracking(true);
+          const s = await detectObjects(grabRef.current?.());
+          setScene(s);
+          if (s.error) return `I could not look properly: ${s.error}`;
+          return s.summary;
+        } catch (e) {
+          return `I could not look: ${e instanceof Error ? e.message : e}`;
+        }
+      }
+      case "point_at_object":
+      case "follow_object": {
+        const ready = await ensureLaser();
+        if (ready) return ready;
+        if (!tracking) {
+          setTracking(true);
+          return "Object tracking was off; I have just turned it on. Ask again in a few seconds.";
+        }
+        const what = String(args.object ?? "").trim();
+        if (!what) return "Which object?";
+        const r = name === "point_at_object" ? await pointAtObject(what) : await followObject(what);
+        if (!r.ok) return `I could not: ${r.error}`;
+        return name === "point_at_object"
+          ? `The laser is on the ${r.label}${r.missPx != null ? `, about ${r.missPx} pixels from its centre` : ""}.`
+          : `Following the ${r.label}.`;
+      }
+      case "stop_following": {
+        await unfollowObject();
+        return "Stopped following. The beam is where it was.";
+      }
+      case "look_closely": {
+        const frame = grabRef.current?.();
+        if (!frame) return "The camera is not available, so I cannot look.";
+        if (keys.voiceProvider === "grok") {
+          // Grok voice takes no images; the scene tracker's description stands in.
+          const s = await detectObjects(frame).catch(() => null);
+          return s ? s.summary : "I could not look.";
+        }
+        sessionRef.current?.sendImage(frame, "This is what the camera sees right now.");
+        return "Photo taken and added to the conversation.";
+      }
       case "goto_step": {
         const n = Number(args.n);
         const total = planRef.current.steps.length;
@@ -531,6 +596,7 @@ export default function App() {
     // The step-change narration and the live voice would talk over each other.
     setNarrate(false);
     const opts = {
+      mode: trackModeRef.current,
       plan: planRef.current,
       step: stepRef.current,
       challenge: challenge ? {
@@ -572,8 +638,16 @@ export default function App() {
   const haveMap = world.frame > 0;
   const advice = guidance.nextAction;
 
+  // Object mode: push the desk contents when the set of objects changes, not
+  // every time a box moves a few pixels.
+  const objectKey = scene.objects.map((o) => `${o.id}:${o.label}:${o.where}`).join("|");
   useEffect(() => {
-    if (!sessionRef.current?.live) return;
+    if (trackMode !== "objects" || !sessionRef.current?.live) return;
+    sessionRef.current.refreshContext(plan, step, sceneRef.current.frame ? sceneRef.current.summary : undefined);
+  }, [trackMode, objectKey]);
+
+  useEffect(() => {
+    if (trackMode !== "board" || !sessionRef.current?.live) return;
     sessionRef.current.refreshContext(
       plan, step, haveMap ? guidanceText(plan, worldRef.current, guidanceRef.current) : undefined,
       challenge ? {
@@ -582,7 +656,17 @@ export default function App() {
         hintLevel: challengeHint,
         hints: challenge.hints.map((hint) => hint.text),
       } : undefined);
-  }, [plan, step, haveMap, advice, challenge, challengeHint]);
+  }, [plan, step, haveMap, advice, challenge, challengeHint, trackMode]);
+
+  function switchMode(next: TrackMode) {
+    if (next === trackMode) return;
+    try { localStorage.setItem(MODE_KEY, next); } catch { /* private window */ }
+    // The voice session's tools are fixed at connect time, so it restarts.
+    stopVoice();
+    unfollowObject().catch(() => {});
+    setTracking(false);
+    setTrackMode(next);
+  }
 
   useEffect(() => () => sessionRef.current?.disconnect(), []);
 
@@ -709,6 +793,24 @@ export default function App() {
               <CameraPanel onCapture={onCapture} busy={busy}
                 registerGrab={(fn) => { grabRef.current = fn; }} />
 
+              <div className="modeswitch" role="tablist" aria-label="What to track">
+                <button role="tab" aria-selected={trackMode === "objects"}
+                  className={trackMode === "objects" ? "on" : ""}
+                  onClick={() => switchMode("objects")}>Anything on the desk</button>
+                <button role="tab" aria-selected={trackMode === "board"}
+                  className={trackMode === "board" ? "on" : ""}
+                  onClick={() => switchMode("board")}>Breadboard</button>
+              </div>
+
+              {trackMode === "objects" ? (
+                <ObjectPanel scene={scene} tracking={tracking} error={visionErr} down={visionDown}
+                  onToggle={() => (tracking ? setTracking(false) : startTracking())}
+                  onReset={async () => { await resetObjects(); setScene(EMPTY_SCENE); }}
+                  onLook={async () => {
+                    try { setScene(await detectObjects(grabRef.current?.())); }
+                    catch (e) { setVisionErr(e instanceof Error ? e.message : String(e)); }
+                  }} />
+              ) : (
               <BoardTracker
                 world={world} guidance={guidance} tracking={tracking} error={visionErr}
                 down={visionDown}
@@ -721,9 +823,11 @@ export default function App() {
                 onShowMap={() => setShowMap((v) => !v)}
                 mapOpen={showMap}
               />
+              )}
 
-              <LaserPanel targets={guidance.focus.targets} why={guidance.focus.why}
-                tracking={tracking} boardFound={world.board.found} worldFrame={world.frame}
+              <LaserPanel mode={trackMode} targets={guidance.focus.targets} why={guidance.focus.why}
+                tracking={tracking} boardFound={world.board.found}
+                worldFrame={trackMode === "objects" ? scene.frame : world.frame}
                 onStartTracking={startTracking} />
 
               <div className="device">
@@ -795,6 +899,8 @@ export default function App() {
                  setKitParts((items) => items.filter((item) => item.instanceId !== id));
                  setSelectedKitPart((selected) => selected === id ? null : selected);
                }} />
+
+        {trackMode === "objects" && <ObjectView live={tracking} scene={scene} />}
 
         {showMap && <BoardMap onClose={() => setShowMap(false)} live={tracking} />}
 

@@ -1,5 +1,5 @@
 import type { Plan } from "./types";
-import { buildInstructions, TOOLS, type RealtimeStatus, type Utterance, type VoiceSession, type VoiceOpts } from "./voice";
+import { instructionsFor, toolsFor, type RealtimeStatus, type Utterance, type VoiceSession, type VoiceOpts } from "./voice";
 import { MicCapture, PcmPlayer, RATE, toBase64, fromBase64 } from "./audio";
 
 const WS_URL = "wss://api.x.ai/v1/realtime";
@@ -59,9 +59,9 @@ export class GrokVoiceSession implements VoiceSession {
       type: "session.update",
       session: {
         voice: this.opts.voice ?? "atlas",
-        instructions: buildInstructions(this.opts.plan, this.opts.step, undefined, this.opts.challenge),
+        instructions: instructionsFor(this.opts),
         turn_detection: { type: "server_vad" },
-        tools: TOOLS,
+        tools: toolsFor(this.opts.mode),
         audio: {
           input: { format: { type: "audio/pcm", rate: RATE } },
           output: { format: { type: "audio/pcm", rate: RATE } },
@@ -104,7 +104,7 @@ export class GrokVoiceSession implements VoiceSession {
     this.opts.challenge = challenge;
     this.send({
       type: "session.update",
-      session: { instructions: buildInstructions(plan, step, live, challenge) },
+      session: { instructions: instructionsFor(this.opts, live) },
     });
   }
 

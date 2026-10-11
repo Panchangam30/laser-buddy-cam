@@ -813,3 +813,30 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
   .project-scrim { padding: 10px; }
   .goal-form > div { flex-direction: column; }
 }
+
+/* --- object mode --- */
+.modeswitch {
+  display: flex; gap: 4px; padding: 3px; margin-bottom: 10px;
+  background: var(--raised); border: 1px solid var(--rule); border-radius: var(--r-pill);
+}
+.modeswitch button {
+  flex: 1; padding: 6px 8px; border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--ink-dim); font-size: 12.5px; cursor: pointer;
+}
+.modeswitch button.on { background: var(--signal); color: var(--signal-ink); font-weight: 600; }
+.objlist { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.objlist li {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--raised);
+}
+.objlist li.lost { opacity: .6; }
+.objlist .objname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.objlist .objname small { color: var(--ink-faint); }
+.objlist .ghostbtn { padding: 3px 9px; font-size: 12px; }
+.objlist .ghostbtn.on { color: var(--signal); border-color: var(--signal); }
+.objectview {
+  position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; padding: 16px;
+  background: var(--chassis);
+}
+.objectview img { max-width: 100%; max-height: calc(100% - 40px); border-radius: var(--r-md); border: 1px solid var(--rule); }
