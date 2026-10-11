@@ -834,9 +834,23 @@ body { background: var(--chassis); color: var(--ink); font-size: 13.5px; line-he
 .objlist .objname small { color: var(--ink-faint); }
 .objlist .ghostbtn { padding: 3px 9px; font-size: 12px; }
 .objlist .ghostbtn.on { color: var(--signal); border-color: var(--signal); }
+.objectstage { display: flex; }
 .objectview {
-  position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 8px; padding: 16px;
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; padding: 24px 16px;
   background: var(--chassis);
 }
-.objectview img { max-width: 100%; max-height: calc(100% - 40px); border-radius: var(--r-md); border: 1px solid var(--rule); }
+.objectframe {
+  position: relative; width: min(100%, calc((100vh - 140px) * 16 / 9));
+  max-width: 100%; border-radius: var(--r-md); overflow: hidden;
+  border: 1px solid var(--rule); background: #000;
+}
+.objectframe video { display: block; width: 100%; height: 100%; object-fit: fill; }
+.objectframe svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.objectframe .obj rect { fill: none; stroke: var(--good); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.objectframe .obj.lost rect { stroke: var(--warn); stroke-dasharray: 6 4; }
+.objectframe .obj text {
+  fill: var(--good); font: 600 20px var(--sans); paint-order: stroke;
+  stroke: rgba(0,0,0,.75); stroke-width: 4px;
+}
+.objectframe .obj.lost text { fill: var(--warn); }

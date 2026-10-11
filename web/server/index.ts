@@ -60,22 +60,24 @@ app.use("/api/vision", async (req, res) => {
       method: req.method,
       headers: req.method === "GET" ? {} : { "Content-Type": "application/json" },
       body: req.method === "GET" ? undefined : JSON.stringify(req.body ?? {}),
-      // A frame takes ~30 ms to analyse; anything near this is a hung service.
-      signal: AbortSignal.timeout(15_000),
+      // A frame takes ~30 ms to analyse; anything near 15 s is a hung service.
+      // Asking the vision model what is on the desk, and closed-loop aiming,
+      // legitimately take longer.
+      signal: AbortSignal.timeout(/^\/objects\/(detect|point)/.test(req.url) ? 75_000 : 15_000),
     });
     const type = r.headers.get("Content-Type") ?? "application/json";
     res.status(r.status).setHeader("Content-Type", type);
     // The debug view is a JPEG, so this has to pass bytes through, not JSON.
     res.send(Buffer.from(await r.arrayBuffer()));
   } catch (e) {
-    const offline = e instanceof Error
-      && (e.name === "TimeoutError" || e.message.includes("fetch failed"));
-    res.status(offline ? 503 : 500).json({
-      error: offline
-        ? "the vision service is not running"
+    const timedOut = e instanceof Error && e.name === "TimeoutError";
+    const offline = e instanceof Error && e.message.includes("fetch failed");
+    res.status(offline || timedOut ? 503 : 500).json({
+      error: timedOut ? "the vision service took too long to answer"
+        : offline ? "the vision service is not running"
         : String(e),
-      detail: offline
-        ? "Start it with:  .venv/bin/python -m vision.service"
+      detail: timedOut ? "It is running but busy. Try again in a moment."
+        : offline ? "Start it with:  .venv/bin/python -m vision.service"
         : undefined,
     });
   }

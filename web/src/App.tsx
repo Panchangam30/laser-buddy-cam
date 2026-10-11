@@ -863,6 +863,11 @@ export default function App() {
         </div>
       </aside>
 
+      {trackMode === "objects" ? (
+        <main className="stage objectstage">
+          <ObjectView live={tracking} scene={scene} onStart={startTracking} />
+        </main>
+      ) : (
       <main className={`stage ${mode === "plan" ? "plan-stage" : ""}`}
         onDragOver={(event) => {
           if (mode !== "plan" || !event.dataTransfer.types.includes("application/x-starter-part")) return;
@@ -899,8 +904,6 @@ export default function App() {
                  setKitParts((items) => items.filter((item) => item.instanceId !== id));
                  setSelectedKitPart((selected) => selected === id ? null : selected);
                }} />
-
-        {trackMode === "objects" && <ObjectView live={tracking} scene={scene} />}
 
         {showMap && <BoardMap onClose={() => setShowMap(false)} live={tracking} />}
 
@@ -1082,6 +1085,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      )}
 
       {projectsOpen && (
         <ProjectPanel projects={projects} activeId={project.id} busy={goalBusy}

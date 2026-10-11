@@ -135,7 +135,8 @@ def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0) -> tuple[list
         x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1))
         box = (int(x0 / 1000 * w), int(y0 / 1000 * h),
                int((x1 - x0) / 1000 * w), int((y1 - y0) / 1000 * h))
-        if box[2] < 4 or box[3] < 4:
+        box = _clip(box, w, h)
+        if box is None:
             continue
         out.append({
             "label": str(item.get("label", "")).strip() or "object",
@@ -144,6 +145,35 @@ def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0) -> tuple[list
             "box": box,
         })
     return out, str(data.get("scene", "") or "").strip(), None
+
+
+def _clip(box, w: int, h: int, min_side: int = 6):
+    """Clamp a box to the frame, or None when too little of it is left.
+
+    This is not tidiness. The model happily returns boxes that run off the edge
+    of the picture (an object half out of shot), and OpenCV's MIL tracker
+    initialised on one of those does not raise -- it takes the process down
+    with SIGKILL, which kills the whole vision service.
+    """
+    x, y, bw, bh = (int(v) for v in box)
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(w, x + bw), min(h, y + bh)
+    if x1 - x0 < min_side or y1 - y0 < min_side:
+        return None
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+#: Border added around the image the tracker sees. MIL samples a search window
+#: around its box, and near the frame edge that window would read outside the
+#: image -- the same native crash as an out-of-bounds box. Padding makes every
+#: sample land on real (black) pixels.
+TRACK_PAD = 48
+
+
+def tracking_image(frame: np.ndarray) -> np.ndarray:
+    small = cv2.resize(frame, None, fx=SceneObject.SCALE, fy=SceneObject.SCALE)
+    return cv2.copyMakeBorder(small, TRACK_PAD, TRACK_PAD, TRACK_PAD, TRACK_PAD,
+                              cv2.BORDER_CONSTANT, value=(0, 0, 0))
 
 
 def _iou(a, b) -> float:
@@ -171,15 +201,22 @@ class SceneObject:
         self._start(frame)
 
     def _start(self, frame) -> None:
-        x, y, w, h = self.box
-        s = self.SCALE
-        small = cv2.resize(frame, None, fx=s, fy=s)
+        fh, fw = frame.shape[:2]
+        self.frame_size = (fw, fh)
+        clipped = _clip(self.box, fw, fh, min_side=12)
+        self.tracker, self.tracking = None, False
+        if clipped is None:
+            return
+        self.box = clipped
+        x, y, w, h = clipped
+        s, p = self.SCALE, TRACK_PAD
         try:
             t = cv2.TrackerMIL_create()
-            t.init(small, (int(x * s), int(y * s), max(4, int(w * s)), max(4, int(h * s))))
+            t.init(tracking_image(frame), (int(x * s) + p, int(y * s) + p,
+                                           max(6, int(w * s)), max(6, int(h * s))))
             self.tracker, self.tracking = t, True
         except cv2.error:
-            self.tracker, self.tracking = None, False
+            pass
 
     def reseed(self, det: dict, frame) -> None:
         self.label, self.detail, self.confidence = det["label"], det["detail"], det["confidence"]
@@ -187,15 +224,27 @@ class SceneObject:
         self.confirmed = time.time()
         self._start(frame)
 
-    def update(self, small) -> None:
+    def update(self, padded) -> None:
+        """`padded` is tracking_image(frame) for the current frame."""
         if self.tracker is None:
             return
-        ok, box = self.tracker.update(small)
-        self.tracking = bool(ok)
-        if ok:
-            s = self.SCALE
-            x, y, w, h = box
-            self.box = (int(x / s), int(y / s), int(w / s), int(h / s))
+        try:
+            ok, box = self.tracker.update(padded)
+        except cv2.error:
+            ok = False
+        if not ok:
+            self.tracking = False
+            return
+        s, p = self.SCALE, TRACK_PAD
+        x, y, w, h = box
+        moved = _clip((int((x - p) / s), int((y - p) / s), int(w / s), int(h / s)),
+                      *self.frame_size, min_side=12)
+        if moved is None:
+            # Drifted off the picture: the object left, or the tracker lost it.
+            self.tracker, self.tracking = None, False
+            return
+        self.tracking = True
+        self.box = moved
 
     @property
     def centre(self) -> tuple[float, float]:
@@ -268,9 +317,9 @@ class ObjectScene:
             self.frames += 1
             h, w = frame.shape[:2]
             self.size = (w, h)
-            small = cv2.resize(frame, None, fx=SceneObject.SCALE, fy=SceneObject.SCALE)
+            padded = tracking_image(frame) if self.objects else None
             for o in self.objects:
-                o.update(small)
+                o.update(padded)
             now = time.time()
             self.objects = [o for o in self.objects if now - o.confirmed < FORGET_S]
             due = not self._detecting and self.api_key and (
