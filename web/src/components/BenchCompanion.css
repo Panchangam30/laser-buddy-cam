@@ -1,0 +1,54 @@
+.bench-overlay { position:fixed; inset:0; z-index:150; background:#080b10b8; }
+.bench-dialog { position:fixed; z-index:151; left:50%; top:50%; transform:translate(-50%,-50%); width:min(720px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow-y:auto; border:1px solid #41444a; border-radius:10px; background:#1c1f23; color:#eceef0; box-shadow:0 32px 100px #0008; font-family:var(--sans); }
+.bench-close { position:absolute; top:20px; right:20px; display:grid; place-items:center; padding:6px; color:#a2a6ae; background:transparent; border:0; border-radius:6px; }
+.bench-close:hover { color:white; background:#ffffff10; }
+.bench-header { display:flex; align-items:center; gap:12px; padding:22px 28px 20px; }
+.bench-header h2 { margin:2px 0; font-size:18px; font-weight:600; letter-spacing:-.2px; }
+.bench-header p { margin:0; font-size:12px; color:#969ca4; }
+.bench-tabs { display:flex; gap:4px; padding:5px; margin:0 32px; border:1px solid #33373d; border-radius:6px; background:#16181b; }
+.bench-tab { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; border:0; border-radius:6px; padding:10px 6px; background:transparent; color:#969ca4; font-size:12px; white-space:nowrap; }
+.bench-tab[data-state=active] { color:#eceef0; background:#30343a; }
+.bench-tab-content { outline:none; }
+.bench-tool { padding:28px 32px; }
+.bench-tool-heading h3 { margin:6px 0; font-size:17px; font-weight:500; letter-spacing:-.2px; }
+.bench-tool-heading p { color:#969ca4; font-size:13px; max-width:550px; margin:0 0 24px; }
+.resistor-stage { position:relative; display:flex; align-items:center; justify-content:center; height:180px; margin-bottom:24px; border:1px solid #30343a; border-radius:14px; background:radial-gradient(ellipse at 50% 30%,#38342a66,transparent 70%),radial-gradient(#ffffff0c 1px,transparent 1px); background-size:auto,14px 14px; padding-bottom:30px; }
+.resistor-lead { height:4px; width:65px; background:linear-gradient(#babec4,#686e77); }
+.resistor-body { display:flex; align-items:stretch; justify-content:center; gap:14px; width:170px; height:54px; padding:0 22px; border-radius:17px; background:linear-gradient(#dfcba1,#c9aa78 65%,#b99968); box-shadow:0 12px 20px #0004,inset 0 2px 2px #f7e4c6; }
+.resistor-body i { width:12px; flex-shrink:0; }
+.resistor-body .tolerance-band { margin-left:15px; }
+.resistor-reading { position:absolute; bottom:20px; font-family:var(--mono); font-size:26px; letter-spacing:-1px; }
+.resistor-reading small { font-size:13px; color:#969ca4; letter-spacing:0; }
+.bench-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.bench-fields.four { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.bench-fields label { display:grid; gap:8px; color:#b0b5bd; font-size:11px; }
+.bench-fields select,.bench-fields input { width:100%; min-width:0; padding:10px; color:#eceef0; background:#16181b; border:1px solid #3a3e45; border-radius:8px; color-scheme:dark; }
+.bench-note { font-size:11px; line-height:1.7; color:#969ca4; margin:18px 0 0; }
+.led-result { display:flex; align-items:center; gap:18px; padding:24px; margin-top:24px; border:1px solid #3a3e45; border-radius:8px; background:#202328; }
+.led-result>svg { color:#e8b33a; flex-shrink:0; }
+.led-result span { color:#b4ab98; font-size:11px; }
+.led-result strong { display:block; font:32px var(--mono); color:#f0d28b; margin:6px 0; }
+.led-result p { margin:0; color:#b4ab98; font-size:11px; }
+.led-result-stats { display:grid; gap:3px; margin-left:auto; flex-shrink:0; }
+.led-result-stats b { font:14px var(--mono); margin-top:6px; }
+.bench-check-progress { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#e8b33a; }
+.bench-check-progress button { background:transparent; border:0; color:#969ca4; font-size:11px; }
+.bench-tool progress { display:block; width:100%; height:5px; margin:10px 0 20px; accent-color:#e8b33a; border:0; border-radius:9px; overflow:hidden; }
+.bench-tool progress::-webkit-progress-bar { background:#33373d; }
+.bench-tool progress::-webkit-progress-value { background:#e8b33a; }
+.bench-checks { display:grid; gap:8px; }
+.bench-checks label { position:relative; display:flex; align-items:center; gap:12px; padding:13px; border:1px solid #34383e; border-radius:9px; cursor:pointer; }
+.bench-checks label:has(input:checked) { background:#4fa97a0a; border-color:#4fa97a50; }
+.bench-checks input { position:absolute; opacity:0; width:20px; height:20px; }
+.bench-check-icon { display:grid; place-items:center; width:20px; height:20px; border:1px solid #626770; border-radius:5px; flex-shrink:0; pointer-events:none; }
+.bench-check-icon svg { opacity:0; }
+.bench-checks input:checked+.bench-check-icon { background:#e8b33a; border-color:#e8b33a; color:#1a1403; }
+.bench-checks input:checked+.bench-check-icon svg { opacity:1; }
+.bench-checks input:focus-visible+.bench-check-icon { outline:2px solid #e8b33a; outline-offset:3px; }
+.bench-checks strong { display:block; font-weight:500; font-size:12px; }
+.bench-checks small { display:block; color:#969ca4; font-size:11px; margin-top:2px; }
+.bench-footer { display:flex; justify-content:space-between; gap:12px; padding:17px 32px; border-top:1px solid #30343a; background:#181a1e; color:#969ca4; font-size:10px; }
+.bench-footer span,.bench-footer a { display:flex; align-items:center; gap:6px; }
+.bench-footer i { width:5px; height:5px; border-radius:50%; background:#4fa97a; }
+.bench-footer a { color:#c7cbd0; text-decoration:none; }
+@media(max-width:600px) { .bench-header { padding:24px 20px; gap:12px; } .bench-header h2 { font-size:18px; } .bench-header p { font-size:11px; } .bench-tabs { margin:0 16px; } .bench-tab { font-size:10px; gap:4px; padding:10px 3px; } .bench-tab svg { display:none; } .bench-tool { padding:24px 20px; } .bench-tool-heading h3 { font-size:17px; } .bench-fields.four { grid-template-columns:repeat(2,minmax(0,1fr)); } .bench-fields { gap:8px; } .bench-fields label { font-size:10px; } .bench-fields input { padding:10px 7px; } .bench-footer { padding:16px 20px; flex-direction:column; } .led-result { padding:16px; gap:12px; flex-wrap:wrap; } .led-result>svg { display:none; } .led-result strong { font-size:26px; } }

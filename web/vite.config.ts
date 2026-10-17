@@ -9,6 +9,6 @@ export default defineConfig({
     // and the vision service stay off the network.
     host: true,
     // Keys live on the API server, never in the browser bundle.
-    proxy: { "/api": { target: "http://localhost:8787", changeOrigin: true } },
+    proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: true } },
   },
 });

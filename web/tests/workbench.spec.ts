@@ -2,6 +2,8 @@ import { expect, test } from "playwright/test";
 
 test.describe("3D planning workbench", () => {
   test.beforeEach(async ({ page }) => {
+    // Planning controls belong to breadboard mode; the app defaults to objects.
+    await page.addInitScript(() => localStorage.setItem("laser-buddy:track-mode:v1", "board"));
     await page.goto("/");
     await page.getByRole("button", { name: "Plan", exact: true }).click();
   });
@@ -39,7 +41,7 @@ test.describe("3D planning workbench", () => {
     await page.getByRole("button", { name: "Recalibrate" }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Finding board…" })).toBeDisabled();
-    await expect(page.getByText("Board tracking is starting automatically")).toBeVisible();
+    await expect(page.getByText("Tracking is starting automatically")).toBeVisible();
   });
 
   test("opens the starter kit and places components", async ({ page }) => {
