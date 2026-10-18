@@ -1,222 +1,128 @@
-# laser-buddy-cam
+# Laser Buddy Cam
 
-A lab TA for a first-year engineering student's breadboard. Point a webcam at the
-bench and it works out a circuit you can build from the parts it sees, shows the
-assembly in 3D, watches what you actually build, talks you through it — and
-**shines a laser on the hole you need next**.
+We built Laser Buddy to help with the confusing part of learning Arduino:
+figuring out what goes where, and why the thing you just built does not work.
+It combines a 3D breadboard guide, a camera view of your real circuit, code
+tools, and an optional laser pointer that can point at the next connection.
 
-The part that makes all of it worth anything is the **board map**: the system
-knows which hole every part is in, because it solves for the board's position and
-reads the holes off the board's own grid rather than asking a model to guess
-coordinates. The laser then works because the map and the head are calibrated
-against each other through the camera, so "point at E20" is a real instruction.
+**Start here: [SETUP.md](SETUP.md).** You can try the tutorials, code library,
+and notes without a camera, Arduino, or API key.
 
-### Two modes
+## What it does
 
-- **Anything on the desk** (default). Point the camera at the desk and press
-  **Track objects**. The vision model names what is in view (phone, pencil,
-  mug...), OpenCV follows each object between looks, and the laser can **Point**
-  at or **Follow** any of them. Calibration needs no breadboard: it learns
-  camera pixels → servo angles by watching the dot on the desk, and every point
-  is then corrected closed-loop by blinking the laser and measuring the miss.
-  See `vision/objects.py`.
-- **Breadboard**. The original circuit-building mode described below.
+- **Build in 3D.** Step through a wiring plan, rotate the board, add starter-kit
+  parts, and inspect connections. The component drawer has 32 visual entries.
+- **Learn with examples.** There are 50 authored Arduino projects, 11 beginner
+  guides, eight 3D fault challenges, and 216 help records at `/hub`.
+- **Write code.** Sketch Studio has syntax coloring, local checks, line-linked
+  explanations, `.ino` downloads, and 53 starter sketches. Each library entry
+  has **Explain** and **Use sketch** buttons.
+- **Ask for code feedback.** Optional Groq feedback reviews a sketch and your
+  question, explains behavior, and suggests changes. You choose whether to use
+  a suggested revision.
+- **Leave notes.** Put sticky notes and arrows on the plan, drag them around,
+  hide/show them, and undo deletions. Arrows can attach to rendered parts and
+  follow them as you rotate the view.
+- **Watch your real board.** OpenCV locates the supported breadboard and maps
+  visible placements to its grid. AI can identify parts separately. Guidance
+  compares the plan with the observed circuit.
+- **Track objects on a desk.** The default camera mode follows objects outside
+  the breadboard workflow. Identification and optional laser targeting need
+  their own setup.
+- **Keep and share builds.** Projects and structured build timelines save in
+  the browser. Export/import JSON or share a compatible project link. Replay
+  keeps up to 300 board-change snapshots, without camera images or audio.
+- **Add voice or a laser.** Configured voice assistance can explain steps.
+  A calibrated Arduino pan/tilt head can point at a hole or tracked object.
+  `/remote` and `/remote/aim` provide phone controls for a reachable local rig.
 
-The switch is at the top of **Devices**. The voice assistant uses a different
-prompt and set of tools in each mode.
+## Quick start: just the website
 
-## Running it
+Install Node.js **22.12 or newer** and Git, then:
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env          # then put a real OPENAI_API_KEY in it
-cd web && npm install && npm run dev
+git clone https://github.com/Panchangam30/laser-buddy-cam.git
+cd laser-buddy-cam/web
+npm ci
+npm run dev:web
 ```
 
-`npm run dev` starts three things: the OpenCV vision service on :8788, the Node
-API on :8787, and the web app on :5173. Open the web app, allow the camera, and
-press **Track my board**.
+Open the address Vite prints, usually <http://localhost:5173>. Open **Projects**
+for the tutorial catalog. For the 3D workbench, expand **Devices**, choose
+**Breadboard**, and use **Plan**. **Bench tools** and **Code editor** are in the
+left panel. Camera and provider features need the services in [SETUP.md](SETUP.md).
 
-There is also a standalone camera identifier, unrelated to the web app:
+## Optional services and keys
 
-```sh
-.venv/bin/python identify.py          # hold a part up, press SPACE
-```
+Put real keys in a repository-root `.env`, copied from [`.env.example`](.env.example).
+Local services read the keys; they are not bundled into the frontend.
 
-## How it fits together
-
-```
-webcam (browser)
-   |
-   |  frames, ~2/sec
-   v
-Node API :8787  --/api/vision/*-->  vision service :8788   (Python, OpenCV)
-   |                                      |
-   |  /api/plan, /api/speak               |  board pose -> homography
-   v                                      |  blobs -> hole references
-OpenAI / xAI                              |  tracking -> stable ids
-                                          |  batched identification (OpenAI)
-                                          v
-                                    world snapshot (JSON)
-                                          |
-                        web app: 3D view, guidance panel, voice tools
-```
-
-### The board map
-
-`vision/` is the new half. Its job is to answer "what is on the board, and in
-which holes", and it answers it by measurement rather than by asking a model:
-
-| File | What it does |
+| Feature | Needs |
 | --- | --- |
-| `web/src/workspaces/breadboard-830.v1.json` | The versioned source of truth for dimensions, anchors, intrinsic nodes, registration limits and laser check points. |
-| `geometry.py` / `breadboard.ts` | Python and TypeScript adapters over that shared workspace definition. |
-| `board.py` | Finds the board and solves a homography from image pixels to board millimetres. |
-| `detect.py` | Finds components on the straightened board and resolves each to the holes it covers. |
-| `track.py` | Stable ids across frames, so parts do not flicker and are not re-identified every frame. |
-| `label.py` | Asks the vision model *what* each part is. Never asks it where. |
-| `world.py` | Assembles the snapshot, and runs the checks that follow from the wiring alone. |
-| `service.py` | HTTP service, plus a standalone mode with its own window. |
-| `selftest.py` | Renders boards with parts in known holes and checks they are read back correctly. |
-| `laser.py` | Serial link to the pan/tilt head (`firmware/laserbuddy/`). |
-| `aim.py` | Calibrates the head against the board, through the camera, and aims it. |
-| `synth.py` | The synthetic board those tests use. Lets you work on the detector with no camera. |
-| `fakehead.py` | A simulated laser rig, so the aiming loop is testable with no hardware. |
+| Tutorials, library explanations, local code checks, notes | Web app only |
+| LLM code feedback | Node API and `GROQ_API_KEY` |
+| Bench-photo plans and AI part identification | Node/Python services as applicable and `OPENAI_API_KEY` |
+| Live board geometry/tracking | Python service and camera permission; geometry can run without AI labels |
+| Grok voice and narration | Node API, `XAI_API_KEY`, and microphone permission for conversation |
+| OpenAI voice alternative | Node API, `OPENAI_API_KEY`, and `VOICE_PROVIDER=openai` |
+| Physical pointing | Connected rig, vision service, camera frames, and calibration |
 
-Run the accuracy check any time you touch the detector:
+Groq code feedback and xAI Grok voice are separate services and use different
+keys. Only configure the features you want.
+
+## What to expect
+
+The 3D workbench is a wiring guide. Its behavior preview animates components;
+it does not solve voltages/currents or run Arduino code. Compile and upload
+sketches in the Arduino IDE, then perform the project's manual test.
+
+The board locator targets the supplied 830-point breadboard profile. Hidden
+leads, unreadable markings, off-board wiring, lighting, and overlapping parts
+can limit what the camera verifies. Review the real circuit before powering it.
+Laser accuracy depends on the setup and needs recalibration after the camera
+or head moves. Never aim the beam at eyes or reflective surfaces.
+
+## Where your work goes
+
+Projects and replay snapshots use IndexedDB. Sketch drafts, sticky notes,
+arrows, and visibility settings use local storage per project. Clearing browser
+site data removes that work. Drafts and annotations are separate from project
+exports and share links.
+
+Local checks, library explanations, and notes do not call an AI provider.
+Requesting LLM feedback sends the sketch, question, and project title to Groq.
+Configured scanning/identification can send images to OpenAI; voice uses the
+selected provider. This is not a promise that every feature runs offline.
+
+## Working on the code
+
+| Directory | What's there |
+| --- | --- |
+| `web/src/` | React UI, 3D workbench, lessons, and browser storage |
+| `web/server/` | Node API and provider requests |
+| `vision/` | Python/OpenCV tracking, geometry, and laser control |
+| `firmware/laserbuddy/` | Arduino firmware for the optional rig |
+| `web/tests/` | Playwright browser and API tests |
+| `web/src/workspaces/` | Shared breadboard geometry and workspace schema |
+
+Measured board geometry supplies locations; the vision model labels component
+identity. Python and TypeScript use the shared workspace profile. See the
+[web notes](web/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for more.
+
+```sh
+cd web
+npm run build
+npm test
+```
+
+From the root, the detector also has a camera-free synthetic self-test:
 
 ```sh
 .venv/bin/python -m vision.selftest
 ```
 
-And to work on it with a live camera and a window of your own:
+Automated checks do not replace a test with a real camera, circuit, or laser rig.
 
-```sh
-.venv/bin/python -m vision.service --camera 0    # [f] flip  [r] reset  [v] view  [q] quit
-```
+## The team
 
-### The laser
-
-The head knows nothing about the board and the board knows nothing about the
-head. What connects them is that the camera can see both: the vision service
-already turns any camera pixel into a millimetre position on the board, so
-switching the laser on and finding its dot tells us where one pair of servo
-angles lands. Do that enough times and the mapping is measured, not assumed — no
-tape measure, and a crooked mount calibrates out for free.
-
-Calibration is not a blind sweep, because a blind sweep does not work. A head
-300 mm from a 165 x 48 mm board sees it across about 30 degrees of pan and only
-six of tilt, so any grid coarse enough to finish in a minute steps straight over
-the board. Instead it searches outwards from wherever the head is already aimed
-until the dot lands on the board, nudges each axis to measure how far a degree
-moves the dot, aims at a grid of board positions using that, and finally checks
-itself by aiming at named holes and measuring the miss. About forty moves.
-
-That last number is the one reported in the UI: **RMS error in millimetres**,
-and what it means in holes. Under half a hole pitch (1.27 mm) and the dot lands
-in the hole you asked for.
-
-```sh
-.venv/bin/python -m vision.service --camera 0
-#   [l] connect laser   [k] calibrate   [1-9] point at a hole   [0] laser off
-```
-
-The firmware switches the laser off after 15 seconds with no command. That is a
-safety default and is left alone — the host re-asserts it only while it is
-deliberately pointing at something, so closing the browser tab puts the laser
-out. Don't look into the beam.
-
-### What is measured and what is inferred
-
-Everything in the world snapshot is one or the other, and the schema says which.
-
-- **Measured** — positions, sizes, angles, which holes a part covers, which
-  electrical nets it joins, and every fault derived from those nets. These come
-  from the board's grid and are good to a fraction of a hole pitch.
-- **Inferred** — what a part *is*, and what its markings say. This is the vision
-  model's answer, and it carries its own confidence. A part with no `value` is
-  one whose markings could not be read; nothing in the system fills that in.
-
-The one thing geometry cannot settle is which end of the board holds column 1 —
-a rectangle photographed from above is identical rotated 180°. The vision model
-is asked to read the printed numbers, and there is a **Column 1: left/right**
-button to override it. It is never silently guessed.
-
-### Plan versus reality
-
-`web/src/lib/guidance.ts` compares the plan against the map. It compares
-**electrical nodes, not hole names**: A20 and E20 are the same node, so a
-resistor the plan puts in E20 is correctly placed if you put it in A20. Each
-planned part comes out as placed, misplaced, missing or not-yet-reached, plus
-anything on the board that is not in the plan.
-
-The voice assistant reads this through four tools — `check_progress`,
-`describe_world`, `where_is` and `point_at` — so it can say "your resistor is in
-column 25, it needs to be in 26" *and put the dot on column 26* instead of
-saying "check your wiring".
-
-### Projects and named goals
-
-Plans live in a browser-local project library backed by IndexedDB. The selected
-project and its current/manual step progress survive reloads; camera images are
-not stored. A successful bench scan creates a project, while a failed scan leaves
-the last good project alone.
-
-The **Frequently searched ideas** section offers 50 authored beginner tutorials
-(10 each for servos, LEDs, buttons, analog inputs, and sound), including the
-button-controlled servo sweep. Search or filter the compact card grid and click
-to create a separate local project with step-by-step 3D wiring, required parts,
-Arduino code, and an observable test. These are curated ideas, not tracked search
-rankings. Loading a card or entering its exact title needs no API key or network
-request. The 3D view is a wiring guide, not an electrical or code simulator.
-Servo lessons use a separate regulated 5 V supply with a common ground; sound
-lessons require a small passive piezo, not a loudspeaker or active buzzer.
-
-In **Projects**, use **Export JSON** to download the current plan, required
-parts, code artifacts, and progress. **Import JSON** adds a separate local copy
-without overwriting existing projects. **Create share link** packages the same
-data into a compressed URL fragment; recipients open their own editable copy.
-No account, database, or server storage is required. Large projects can be
-shared as JSON instead. Share links include the exported content, so only share
-projects you intend recipients to read. Cameras and voice recordings are not included.
-
-### Build replay
-
-Board tracking automatically records changes after three consistent observations.
-Open **Timeline** to scrub, step through, or play those snapshots in **My board**.
-Each entry saves the board measurements, wiring issues, assembly step, and plan
-at that moment. **Return to live** restores the current board view; voice and
-laser guidance always use the live board, never the historical display.
-The latest 300 changes are kept in the browser's project library and included
-in JSON export/import, so an instructor can review a shared build. No camera
-images, audio, account, or remote database are required.
-
-The Projects panel also accepts named goals. Goal plans come from a verified,
-deterministic catalog and include requirements, safety warnings, code and manual
-test steps. Unsupported goals are refused rather than receiving model-invented
-wiring. The original server goal matcher supports the button-controlled servo
-sweep; the 50 local tutorials can also be loaded by their exact titles or IDs.
-
-### Workspace capabilities
-
-World snapshots now identify their workspace profile and advertise location,
-connectivity and absolute-targeting capabilities. Locations and laser requests
-use scoped workspace references internally; legacy breadboard hole strings remain
-at the renderer boundary for compatibility. The only production locator today is
-the existing 830-point breadboard adapter. Perfboard and PCB support require
-registered profiles/fiducials and are deliberately not presented as available yet.
-
-### Known limits
-
-- Two parts of the **same colour** that touch are measured as one part.
-  Different-coloured ones separate correctly.
-- A **red wire lying along the red rail stripe** is cut in two by stripe removal.
-  It survives as two blobs, each with one good endpoint.
-- Hole references at the **extreme ends of the board** are the least reliable, and
-  parts there are reported at low confidence for that reason.
-- A resistor is located by its **body**, not its leads: thin bare wire is usually
-  invisible to a webcam, so its reported span is the body's, not lead to lead.
-- The laser needs **recalibrating if the head or the camera is moved**. Nothing
-  detects that automatically; the accuracy figure is from the last calibration.
-- Calibration needs **board tracking on**, because it measures the dot through
-  the same frames the browser is already sending.
+Sriman Panchangam, Shivang Patel, Advait Chandrakar, and Abhinav Ramireddy.

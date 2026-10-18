@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 import { PLAN_PROMPT } from "./prompt.js";
 import { planForGoal } from "./goalPlans.js";
 import { validatePlanShape } from "./validatePlan.js";
+import { createSketchReviewRouter } from "./sketchReview.js";
 
-// Reuse the same .env the Python CLI uses -- one place for both keys.
+// Reuse the same .env the Python CLI uses -- one place for service keys.
 const here = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(here, "../../.env") });
 
@@ -14,6 +15,8 @@ const app = express();
 app.use(express.json({ limit: "12mb" }));
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? "";
+const GROQ_KEY = process.env.GROQ_API_KEY ?? "";
+const CODE_MODEL = process.env.GROQ_CODE_MODEL || "openai/gpt-oss-120b";
 const XAI_KEY = process.env.XAI_API_KEY ?? "";
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 const VOICE = process.env.XAI_VOICE_ID || "atlas";
@@ -24,9 +27,12 @@ const VOICE_PROVIDER = (process.env.VOICE_PROVIDER || "grok").toLowerCase();
 const VISION_URL = process.env.VISION_URL || "http://127.0.0.1:8788";
 const MAX_GOAL_LENGTH = 500;
 
+app.use("/api/sketch", createSketchReviewRouter({ apiKey: GROQ_KEY, model: CODE_MODEL }));
+
 app.get("/api/health", async (_req, res) => {
   res.json({
     openai: OPENAI_KEY ? "configured" : "missing",
+    groq: GROQ_KEY ? "configured" : "missing", codeModel: CODE_MODEL,
     xai: XAI_KEY ? "configured" : "missing",
     model: MODEL, voice: VOICE, realtimeModel: REALTIME_MODEL,
     voiceProvider: VOICE_PROVIDER, grokVoiceModel: GROK_VOICE_MODEL,
@@ -258,4 +264,4 @@ app.post("/api/xai-realtime-token", async (_req, res) => {
 });
 
 const PORT = Number(process.env.API_PORT ?? 8787);
-app.listen(PORT, () => console.log(`api listening on http://localhost:${PORT}`));
+app.listen(PORT, "127.0.0.1", () => console.log(`api listening on http://127.0.0.1:${PORT}`));

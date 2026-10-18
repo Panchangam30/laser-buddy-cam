@@ -17,6 +17,8 @@
   "dependencies": {
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.8.1",
+    "lucide-react": "^1.59.0",
+    "radix-ui": "^1.8.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.186.1",
@@ -29,7 +31,7 @@
     "@types/react-dom": "^19.2.7",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "concurrently": "^10.0.5",
+    "concurrently": "^10.0.6",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
     "oxlint": "^1.81.0",
@@ -37,5 +39,8 @@
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

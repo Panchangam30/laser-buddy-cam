@@ -28,6 +28,10 @@ import {
   seatPart,
 } from "./components/StarterKit";
 import { SiteFooter } from "./components/SiteFooter";
+import { BenchCompanion } from "./components/BenchCompanion";
+import { SketchStudio } from "./components/SketchStudio";
+import { PlanNotes } from "./components/PlanNotes";
+import type { AnnotationSceneBridge } from "./lib/annotations";
 import { challengeById } from "./hub/content";
 import { projectFromLink } from "./lib/sharing";
 import { StableBoardRecorder, REPLAY_LIMIT } from "./lib/replay";
@@ -67,6 +71,7 @@ export default function App() {
   const [goalBusy, setGoalBusy] = useState(false);
   const [goalError, setGoalError] = useState("");
   const projectReady = useRef(false);
+  const annotationBridge = useRef<AnnotationSceneBridge | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- the live map of the board ---
@@ -780,6 +785,11 @@ export default function App() {
           </p>
         </header>
 
+        <div className="project-tools" role="group" aria-label="Project tools">
+          <BenchCompanion projectId={project.id} />
+          <SketchStudio key={project.id} project={project} />
+        </div>
+
         {/* The steps come first. They are the thing you work through, and they
             used to sit below a camera preview, three device panels and a
             transcript -- off the bottom of the panel on most screens. */}
@@ -904,7 +914,7 @@ export default function App() {
             Math.max(-74, Math.min(74, x)), Math.max(-45, Math.min(45, z))));
         }}>
         <Scene plan={displayPlan} step={displayStep} exploded={exploded}
-               paused={projectsOpen}
+               paused={projectsOpen} annotationBridge={annotationBridge}
                mode={mode} world={displayWorld} guidance={displayGuidance} labels={labels}
                kitParts={kitParts} selectedKitPart={selectedKitPart}
                simulation={{ running: simulationRunning, powered: simulationPowered, rate: simulationRate,
@@ -922,6 +932,8 @@ export default function App() {
                  setKitParts((items) => items.filter((item) => item.instanceId !== id));
                  setSelectedKitPart((selected) => selected === id ? null : selected);
                }} />
+
+        {mode === "plan" && <PlanNotes key={project.id} projectId={project.id} step={step} bridge={annotationBridge} />}
 
         {showMap && <BoardMap onClose={() => setShowMap(false)} live={tracking} />}
 

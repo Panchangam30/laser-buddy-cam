@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, ContactShadows } from "@react-three/drei";
 import { Breadboard } from "./Breadboard";
@@ -10,6 +10,8 @@ import type { World } from "../lib/world";
 import type { Guidance } from "../lib/guidance";
 import { KitPartsLayer, type PlacedKitPart, type SimulationState } from "../components/StarterKit";
 import { ExternalDevices, externalAnchorMap } from "./ExternalDevices";
+import { AnnotationTargets } from "./AnnotationTargets";
+import type { AnnotationSceneBridge } from "../lib/annotations";
 
 /**
  * What the student is looking at.
@@ -25,7 +27,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   kitParts = [], selectedKitPart = null, onSelectKitPart = () => {},
   highlightPartIds = [], paused = false,
   simulation = { running: false, powered: true, rate: 1, includedIds: [] },
-  onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {},
+  onMoveKitPart = () => {}, onDeleteKitPart = () => {}, onWireChange = () => {}, annotationBridge,
 }: {
   plan: Plan;
   step: number;
@@ -45,6 +47,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   onMoveKitPart?: (id: string, position: [number, number, number]) => void;
   onDeleteKitPart?: (id: string) => void;
   onWireChange?: (id: string, end: "start" | "end", position: [number, number, number], target?: string) => void;
+  annotationBridge?: RefObject<AnnotationSceneBridge | null>;
 }) {
   const [focusedMove, setFocusedMove] = useState(false);
   const visibleAt = new Map<string, number>();
@@ -78,6 +81,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.95 }}
       style={{ background: "radial-gradient(120% 90% at 50% 22%, #2b2e34 0%, #1a1c20 55%, #121316 100%)" }}
     >
+      {annotationBridge && mode === "plan" && <AnnotationTargets bridge={annotationBridge} plan={plan} step={step} kitParts={kitParts} />}
       {/* Key light from the front-left, the angle product photos use. */}
       <directionalLight
         position={[-70, 130, 90]} intensity={1.85} castShadow

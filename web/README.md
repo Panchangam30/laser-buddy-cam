@@ -10,8 +10,10 @@ assembly step by step with spoken narration.
     npm install     # first time only
     npm run dev
 
-Open http://localhost:5173. Two processes start: the Vite dev server and the API
-server on :8787.
+Open http://localhost:5173. Three processes start: Vite on :5173, the Node API
+on :8787, and the Python vision service on :8788. Create the root `.venv` first.
+See [SETUP.md](../SETUP.md) for prerequisites, a web-only start, Windows commands,
+and instructions for the optional camera, keys, and laser rig.
 
 ## Why there is a server at all
 
@@ -23,9 +25,56 @@ The browser never sees your API keys. Every model call goes through
 |---|---|
 | `GET  /api/health` | reports which keys are configured |
 | `POST /api/plan`   | photo -> assembly plan (OpenAI vision) |
+| `POST /api/sketch/review` | sketch and question -> structured LLM feedback (Groq) |
 | `POST /api/speak`  | step text -> mp3 (xAI Grok TTS) |
 | `POST /api/realtime-token` | short-lived OpenAI token (only if VOICE_PROVIDER=openai) |
 | `POST /api/xai-realtime-token` | short-lived xAI token for a Grok voice session |
+
+## Local plan notes
+
+In breadboard **Plan** view, use **Note** and click the plan to place a sticky.
+Type directly in the note, drag its header to move it, or use the color button
+to cycle yellow, blue, and pink. **Arrow** lets you drag between locations;
+arrow ends snap to nearby rendered parts and follow those parts when the view
+rotates. A note's arrow button connects that note to a part or location.
+
+**Hide notes / Show notes** remains available in the plan toolbar and remembers
+the setting for each project. Double-click a note to delete it and its attached
+arrows; **Undo** restores the last annotation action. Arrows can also be selected
+and deleted with the toolbar, double-click, or Delete/Backspace. Escape cancels
+placing or drawing. Notes record the assembly step where they were created.
+
+Annotations save only to this browser's local storage per project. They are
+separate from project JSON/share links and are never sent for LLM feedback.
+Part-attached arrows are hidden when their target is absent from the current
+step; free arrows remain fixed to the view. The app reports storage failures
+while keeping annotations editable for the session.
+
+## Sketch Studio
+
+Open **Code editor** in the circuit guide. Local checks explain common Arduino
+patterns and work without a key. **Library** contains 53 starter sketches: the
+50 authored tutorial projects plus three basic examples. Search by project or
+part, filter by category, and select **Explain** for setup notes, expected
+behavior, parts, and source code. **Use sketch** loads a copy after replacement
+confirmation; it does not change the circuit plan or original project artifact.
+
+The **LLM feedback** tab reviews the current sketch and an optional goal/question.
+Set `GROQ_API_KEY` in the repository-root `.env` and restart the Node API with
+`npm run dev:api`. The endpoint uses `GROQ_CODE_MODEL` when set, otherwise
+`openai/gpt-oss-120b` hosted by Groq. The selected model must support Groq's
+[strict structured outputs](https://console.groq.com/docs/structured-outputs).
+No key is sent to or stored by the browser. The sketch, question, and project
+title are sent to Groq only when you request LLM feedback. This code-review
+feature uses a Groq key independently of the vision and voice providers.
+
+Reviews include a summary, line-linked explanations and issues, suggested next
+steps, and an optional revised sketch. **Use suggestion** requires confirmation.
+Editing code or the question invalidates old feedback. Review calls can be
+canceled and time out after 60 seconds. Missing-key, quota, provider, and invalid
+output errors are shown without replacing the draft. Drafts stay in this browser
+per project and can be downloaded as `.ino`; drafts are separate from project
+JSON exports. Neither local nor LLM review compiles, executes, or uploads code.
 
 ## Talking to it
 

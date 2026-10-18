@@ -1,14 +1,49 @@
-# Secrets -- never commit the real one. .env.example is the committed template.
+# Real environment files stay local. Keep the setup templates.
 .env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.npmrc
+.pypirc
+.netrc
+.git-credentials
 
-# python
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+credentials.json
+*service-account*.json
+.aws/
+.ssh/
+
+# Python environments and caches
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# web
-web/node_modules/
-web/dist/
+# Dependencies, builds, test output, and logs
+node_modules/
+dist/
+dist-ssr/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+*.log
+logs/
+
+# These describe an individual camera/laser setup.
 calibration.json
 pixel_calibration.json
 pixel_homography.json
@@ -19,3 +54,20 @@ laser_prefs.json
 # first run, hundreds of MB, never committed.
 weights/
 *.pt
+
+# Local captures, recordings, and project exports belong here.
+/captures/
+/recordings/
+/exports/
+/.local/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*~
+
+# Local website handoff brief; leave the original file on disk.
+/docs/laserbuddy-website-update-brief.md
