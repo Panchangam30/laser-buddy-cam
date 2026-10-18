@@ -6,17 +6,15 @@ needs nothing but the camera and the desk, and works in camera pixels.
 
 Three pieces:
 
-* Detection. The vision model is shown the whole frame and asked what is on the
-  desk and roughly where (a box). That is the only thing it is good at here and
-  the only thing it is asked. It runs in the background, every few seconds or
-  when the scene changes, never per frame.
-* Tracking. Between detections each object is followed with an OpenCV MIL
-  tracker, so boxes move with the object at frame rate and ids stay stable.
-  A fresh detection is matched back onto the existing tracks by overlap.
-* Aiming. A pixel-to-servo map (follow.PixelAimer) learned by watching the dot,
-  then refined on every point by closed loop: aim, blink the laser to find
-  where the dot actually landed, correct, repeat. The calibration only has to
-  get the dot close; the loop puts it on the object.
+* Tracking. YOLO-World (vision/yolo.py), a pretrained open-vocabulary detector,
+  finds objects by name every frame and ByteTrack keeps their ids stable.
+* Naming. Every few seconds, or when the scene changes, the vision language
+  model looks at the whole frame to name things properly, read labels, and
+  spot objects YOLO's vocabulary does not cover yet; those names are then
+  added to YOLO so it starts tracking them too.
+* Aiming. A camera-pixel <-> servo map fitted with a physical homography model
+  (vision/pixelcal.py), then refined on every point by closed loop: aim, blink
+  the laser to see where the dot actually landed, correct.
 
 Depth caveat, which no calibration removes: the camera and the laser sit in
 different places, so the map is exact only at the depth it was calibrated on
@@ -36,7 +34,7 @@ import urllib.request
 import cv2
 import numpy as np
 
-from . import follow
+from . import pixelcal
 from .laser import PAN_MAX, PAN_MIN, TILT_MAX, TILT_MIN
 
 MODEL = os.environ.get("OPENAI_SCENE_MODEL") or os.environ.get("OPENAI_MODEL", "gpt-4o")
@@ -163,88 +161,27 @@ def _clip(box, w: int, h: int, min_side: int = 6):
     return (x0, y0, x1 - x0, y1 - y0)
 
 
-#: Border added around the image the tracker sees. MIL samples a search window
-#: around its box, and near the frame edge that window would read outside the
-#: image -- the same native crash as an out-of-bounds box. Padding makes every
-#: sample land on real (black) pixels.
-TRACK_PAD = 48
 
-
-def tracking_image(frame: np.ndarray) -> np.ndarray:
-    small = cv2.resize(frame, None, fx=SceneObject.SCALE, fy=SceneObject.SCALE)
-    return cv2.copyMakeBorder(small, TRACK_PAD, TRACK_PAD, TRACK_PAD, TRACK_PAD,
-                              cv2.BORDER_CONSTANT, value=(0, 0, 0))
-
-
-def _iou(a, b) -> float:
-    ax0, ay0, aw, ah = a; bx0, by0, bw, bh = b
-    ix = max(0, min(ax0 + aw, bx0 + bw) - max(ax0, bx0))
-    iy = max(0, min(ay0 + ah, by0 + bh) - max(ay0, by0))
-    inter = ix * iy
-    union = aw * ah + bw * bh - inter
-    return inter / union if union else 0.0
+#: A YOLO track that vanished is kept (as lost) this long before it is dropped,
+#: so an object a hand passes over does not blink out of the list.
+LOST_KEEP_S = 4.0
+#: Language-model objects YOLO has not picked up are kept this long.
+LLM_KEEP_S = 25.0
 
 
 class SceneObject:
-    #: MIL is not cheap at full resolution; track on a half-size frame.
-    SCALE = 0.5
-
-    def __init__(self, oid: str, det: dict, frame: np.ndarray) -> None:
+    def __init__(self, oid: str, label: str, box, source: str) -> None:
         self.id = oid
-        self.label = det["label"]
-        self.detail = det["detail"]
-        self.confidence = det["confidence"]
-        self.box = det["box"]
+        self.label = label
+        #: YOLO's own class name, kept separately from the display label.
+        self.cls = label
+        self.detail = ""
+        self.confidence = "medium"
+        self.box = box
+        self.source = source              # "yolo" (tracked) or "llm" (named only)
+        self.tid: int | None = None
         self.first_seen = self.confirmed = time.time()
-        self.tracking = False
-        self.tracker = None
-        self._start(frame)
-
-    def _start(self, frame) -> None:
-        fh, fw = frame.shape[:2]
-        self.frame_size = (fw, fh)
-        clipped = _clip(self.box, fw, fh, min_side=12)
-        self.tracker, self.tracking = None, False
-        if clipped is None:
-            return
-        self.box = clipped
-        x, y, w, h = clipped
-        s, p = self.SCALE, TRACK_PAD
-        try:
-            t = cv2.TrackerMIL_create()
-            t.init(tracking_image(frame), (int(x * s) + p, int(y * s) + p,
-                                           max(6, int(w * s)), max(6, int(h * s))))
-            self.tracker, self.tracking = t, True
-        except cv2.error:
-            pass
-
-    def reseed(self, det: dict, frame) -> None:
-        self.label, self.detail, self.confidence = det["label"], det["detail"], det["confidence"]
-        self.box = det["box"]
-        self.confirmed = time.time()
-        self._start(frame)
-
-    def update(self, padded) -> None:
-        """`padded` is tracking_image(frame) for the current frame."""
-        if self.tracker is None:
-            return
-        try:
-            ok, box = self.tracker.update(padded)
-        except cv2.error:
-            ok = False
-        if not ok:
-            self.tracking = False
-            return
-        s, p = self.SCALE, TRACK_PAD
-        x, y, w, h = box
-        moved = _clip((int((x - p) / s), int((y - p) / s), int(w / s), int(h / s)),
-                      *self.frame_size, min_side=12)
-        if moved is None:
-            # Drifted off the picture: the object left, or the tracker lost it.
-            self.tracker, self.tracking = None, False
-            return
-        self.tracking = True
-        self.box = moved
+        self.tracking = source == "yolo"
 
     @property
     def centre(self) -> tuple[float, float]:
@@ -259,11 +196,20 @@ class SceneObject:
             "confidence": self.confidence if self.tracking else "low",
             "box": [x, y, bw, bh],
             "centre": [round(cu), round(cv)],
-            # Where it sits, in words, for the assistant and the UI.
             "where": _where(cu / max(1, w), cv / max(1, h)),
             "tracking": self.tracking,
+            "source": self.source,
             "ageS": round(time.time() - self.confirmed, 1),
         }
+
+
+def _iou(a, b) -> float:
+    ax0, ay0, aw, ah = a; bx0, by0, bw, bh = b
+    ix = max(0, min(ax0 + aw, bx0 + bw) - max(ax0, bx0))
+    iy = max(0, min(ay0 + ah, by0 + bh) - max(ay0, by0))
+    inter = ix * iy
+    union = aw * ah + bw * bh - inter
+    return inter / union if union else 0.0
 
 
 def _where(fx: float, fy: float) -> str:
@@ -286,17 +232,72 @@ def describe(objs: list[dict], scene: str = "") -> str:
     return (f"{scene}\n" if scene else "") + "\n".join(lines)
 
 
-class ObjectScene:
-    """Every object currently tracked, with background re-detection."""
+def describe(objs: list[dict], scene: str = "") -> str:
+    if not objs:
+        return "No objects identified yet." + (f" {scene}" if scene else "")
+    lines = [f"- {o['label']} ({o['id']}), {o['where']}"
+             + (f", {o['detail']}" if o["detail"] else "")
+             + ("" if o["tracking"] else
+                (", seen but not being tracked" if o.get("source") == "llm"
+                 else ", lost track of it -- may have moved"))
+             for o in objs]
+    return (f"{scene}\n" if scene else "") + "\n".join(lines)
 
-    def __init__(self, api_key: str) -> None:
+
+def _inside(pt, box, slack: float = 0.15) -> bool:
+    x, y, w, h = box
+    return (x - w * slack <= pt[0] <= x + w * (1 + slack)
+            and y - h * slack <= pt[1] <= y + h * (1 + slack))
+
+
+def _match_score(o: "SceneObject", d: dict) -> float:
+    """How likely a language-model detection is this tracked object.
+
+    The language model's boxes are loose -- often half the size or offset from
+    the object -- so overlap alone misses obvious matches. A shared name
+    ("keyboard" in "Logitech keyboard") plus either box's centre sitting inside
+    the other is strong evidence on its own.
+    """
+    score = _iou(o.box, d["box"])
+    words = set(d["label"].lower().split())
+    named = bool(words & set(f"{o.cls} {o.label}".lower().split()))
+    dx, dy, dw, dh = d["box"]
+    centred = _inside(o.centre, d["box"]) or _inside((dx + dw / 2, dy + dh / 2), o.box)
+    if named:
+        score += 0.35
+    if centred:
+        score += 0.25
+    if not named and not centred:
+        score *= 0.5
+    return score
+
+
+def _conf_word(c: float) -> str:
+    return "high" if c >= 0.5 else "medium" if c >= 0.25 else "low"
+
+
+class ObjectScene:
+    """Every object on the desk.
+
+    YOLO-World + ByteTrack (vision/yolo.py) find and follow objects every frame.
+    The language model looks every so often to name things properly, read
+    labels, and spot objects YOLO's vocabulary does not cover yet -- those names
+    are then added to YOLO, so it starts tracking them too.
+    """
+
+    def __init__(self, api_key: str, detector=None) -> None:
         self.api_key = api_key
+        if detector is None:
+            from .yolo import Detector
+            detector = Detector()
+        self.detector = detector
         self.objects: list[SceneObject] = []
         self.scene = ""
         self.error = ""
         self.frames = 0
         self.size = (0, 0)
         self._next_id = 1
+        self._by_tid: dict[int, SceneObject] = {}
         self._last_detect = 0.0
         self._detecting = False
         self._detect_grey: np.ndarray | None = None
@@ -307,21 +308,25 @@ class ObjectScene:
     def reset(self) -> None:
         with self._lock:
             self.objects, self.scene, self.error = [], "", ""
+            self._by_tid = {}
             self._last_detect = 0.0
             self._detect_grey = None
+
+    def _new_id(self) -> str:
+        oid = f"obj{self._next_id}"
+        self._next_id += 1
+        return oid
 
     # ---------------------------------------------------------------- per frame
 
     def update(self, frame: np.ndarray) -> dict:
+        dets = self.detector.track(frame)          # outside the scene lock: ~15 ms
         with self._lock:
             self.frames += 1
             h, w = frame.shape[:2]
             self.size = (w, h)
-            padded = tracking_image(frame) if self.objects else None
-            for o in self.objects:
-                o.update(padded)
             now = time.time()
-            self.objects = [o for o in self.objects if now - o.confirmed < FORGET_S]
+            self._apply_yolo(dets, w, h, now)
             due = not self._detecting and self.api_key and (
                 now - self._last_detect > REDETECT_S
                 or (now - self._last_detect > CHANGE_REDETECT_S and self._changed(frame)))
@@ -330,11 +335,72 @@ class ObjectScene:
                 threading.Thread(target=self._detect, args=(frame.copy(),), daemon=True).start()
             return self._snapshot()
 
+    def _apply_yolo(self, dets, w, h, now) -> None:
+        seen: set[str] = set()
+        for d in dets:
+            box = _clip(d["box"], w, h)
+            if box is None:
+                continue
+            obj = self._by_tid.get(d["tid"]) if d["tid"] is not None else None
+            if obj is None:
+                obj = self._adopt(d["label"], box, now)
+                if d["tid"] is not None:
+                    self._by_tid[d["tid"]] = obj
+            if obj.id in seen:
+                continue
+            seen.add(obj.id)
+            if obj.source == "llm":           # YOLO has now picked it up
+                obj.source = "yolo"
+            # Keep a name the language model gave it ("yellow pencil"); otherwise
+            # the display name follows YOLO's class.
+            if obj.label == obj.cls:
+                obj.label = d["label"]
+            obj.box, obj.cls = box, d["label"]
+            obj.confidence = _conf_word(d["conf"])
+            obj.tracking, obj.confirmed = True, now
+        keep = []
+        for o in self.objects:
+            if o.id not in seen and o.source == "yolo":
+                o.tracking = False
+            limit = LOST_KEEP_S if o.source == "yolo" else LLM_KEEP_S
+            if o.id in seen or now - o.confirmed < limit:
+                keep.append(o)
+        self.objects = keep
+        live = {o.id for o in keep}
+        self._by_tid = {t: o for t, o in self._by_tid.items() if o.id in live}
+
+    def _adopt(self, label, box, now) -> SceneObject:
+        """A new track: reuse a recently lost object of the same kind nearby.
+
+        ByteTrack hands out a new id after an occlusion, and after the
+        vocabulary changes. Without this the phone becomes obj9 every time a
+        hand crosses it, and "point at obj3" stops working.
+        """
+        cu, cv = box[0] + box[2] / 2, box[1] + box[3] / 2
+        best, best_d = None, 0.0
+        for o in self.objects:
+            if o.tracking and o.source == "yolo":
+                continue
+            same = o.cls == label or o.label.lower() == label
+            ou, ov = o.centre
+            dist = float(np.hypot(ou - cu, ov - cv))
+            near = max(60.0, 0.6 * max(o.box[2], o.box[3]))
+            ok = (same and dist < near * 2) or _iou(o.box, box) > 0.75
+            if ok and (best is None or dist < best_d):
+                best, best_d = o, dist
+        if best is not None:
+            return best
+        obj = SceneObject(self._new_id(), label, box, "yolo")
+        self.objects.append(obj)
+        return obj
+
     def _changed(self, frame) -> bool:
         grey = cv2.cvtColor(cv2.resize(frame, (160, 90)), cv2.COLOR_BGR2GRAY)
         if self._detect_grey is None:
             return True
         return float(np.mean(cv2.absdiff(grey, self._detect_grey))) > CHANGE_LEVEL
+
+    # ------------------------------------------------------ language-model look
 
     def _detect(self, frame) -> None:
         try:
@@ -347,37 +413,42 @@ class ObjectScene:
             self._detect_grey = cv2.cvtColor(cv2.resize(frame, (160, 90)), cv2.COLOR_BGR2GRAY)
             self.error = err or ""
             if not err:
-                self._merge(dets, frame)
+                self._merge_llm(dets)
                 self.scene = scene
             self._detections += 1
             self._done.notify_all()
 
-    def _merge(self, dets: list[dict], frame) -> None:
-        unmatched = list(self.objects)
-        kept = []
+    def _merge_llm(self, dets: list[dict]) -> None:
+        """Put the language model's names and details onto tracked objects."""
+        now = time.time()
+        claimed: set[str] = set()
+        new_names = []
         for d in dets:
-            best, best_iou = None, MATCH_IOU
-            for o in unmatched:
-                score = _iou(o.box, d["box"])
-                # Same name counts for a lot: a phone that moved should stay "obj3".
-                if o.label.lower() == d["label"].lower():
-                    score += 0.15
-                if score > best_iou:
-                    best, best_iou = o, score
+            best, best_score = None, 0.3
+            for o in self.objects:
+                if o.id in claimed:
+                    continue
+                score = _match_score(o, d)
+                if score > best_score:
+                    best, best_score = o, score
             if best is not None:
-                unmatched.remove(best)
-                best.reseed(d, frame)
-                kept.append(best)
+                claimed.add(best.id)
+                best.label, best.detail = d["label"], d["detail"]
+                if best.source == "llm":
+                    best.box, best.confirmed = d["box"], now
             else:
-                kept.append(SceneObject(f"obj{self._next_id}", d, frame))
-                self._next_id += 1
-        # The model did not list these this time. Keep them while their tracker
-        # still holds -- one missed detection is not the object leaving.
-        kept += [o for o in unmatched if o.tracking]
-        self.objects = kept
+                o = SceneObject(self._new_id(), d["label"], d["box"], "llm")
+                o.detail, o.confidence = d["detail"], d["confidence"]
+                self.objects.append(o)
+                claimed.add(o.id)
+            new_names.append(d["label"])
+            # The bare noun as well: "yellow pencil" -> "pencil".
+            new_names.append(d["label"].split()[-1])
+        if self.detector.add_names(new_names):
+            pass
 
     def detect_now(self, frame: np.ndarray | None, timeout: float = 35.0) -> dict:
-        """Force a detection and wait for it. For 'what do you see?'."""
+        """Force a language-model look and wait for it. For 'what do you see?'."""
         with self._lock:
             start = self._detections
             if frame is not None and not self._detecting:
@@ -390,16 +461,24 @@ class ObjectScene:
     def _snapshot(self) -> dict:
         w, h = self.size
         objs = [o.serialise(w, h) for o in self.objects]
+        objs.sort(key=lambda o: (not o["tracking"], o["id"]))
+        err = self.error or ("" if self.detector.ready else self.detector.error)
         return {
             "mode": "objects", "at": round(time.time(), 3), "frame": self.frames,
             "size": [w, h], "objects": objs, "scene": self.scene,
-            "detecting": self._detecting, "error": self.error,
+            "detecting": self._detecting, "error": err,
+            "tracker": "yolo-world" if self.detector.ready
+                       else ("loading" if not self.detector.error else "unavailable"),
             "summary": describe(objs, self.scene),
         }
 
     def snapshot(self) -> dict:
         with self._lock:
             return self._snapshot()
+
+    def get(self, oid: str) -> SceneObject | None:
+        with self._lock:
+            return next((o for o in self.objects if o.id == oid), None)
 
     def find(self, query: str) -> SceneObject | None:
         """Best match for a spoken name: 'the phone', 'obj3', 'yellow pencil'."""
@@ -416,9 +495,9 @@ class ObjectScene:
             words = set(q.split())
             best, best_score = None, 0.0
             for o in self.objects:
-                name = f"{o.label} {o.detail}".lower()
+                name = f"{o.label} {o.cls} {o.detail}".lower()
                 score = sum(1 for wd in words if wd in name) / len(words)
-                if q in o.label.lower():
+                if q in o.label.lower() or q == o.cls:
                     score += 1
                 if o.tracking:
                     score += 0.1
@@ -439,36 +518,38 @@ class ObjectScene:
 
 # --------------------------------------------------------------------- aiming
 
-class FrameSource:
-    """Looks like cv2.VideoCapture to follow.py, but reads browser frames.
-
-    The browser owns the webcam, so the calibration routines that were written
-    against a capture device get the frames the tab is already posting.
-    """
-
-    def __init__(self, next_frame) -> None:
-        self.next_frame = next_frame
-
-    def read(self):
-        f = self.next_frame()
-        return (f is not None), f
-
-
 class PixelCalibrator:
-    """Runs follow.calibrate in the background and reports progress."""
+    """Runs pixelcal.calibrate in the background and reports progress."""
 
     def __init__(self) -> None:
-        self.aimer: follow.PixelAimer | None = None
+        self.aimer: pixelcal.HomographyAimer | None = None
         self.running = False
         self.progress = ""
+        self.fraction = 0.0
         self.error = ""
         self.at = 0.0
         self._cancel = False
         self._lock = threading.Lock()
+        self.manual: list[tuple[float, float, float, float]] = []
 
-    def aimer_for(self, w: int, h: int) -> follow.PixelAimer:
+    def finish_manual(self, size) -> tuple["pixelcal.HomographyAimer | None", str]:
+        """Fit the hand-aimed points. Returns (aimer, error)."""
+        if len(self.manual) < self.MIN_MANUAL:
+            return None, f"Add at least {self.MIN_MANUAL} points (you have {len(self.manual)})."
+        a = pixelcal.HomographyAimer(*size)
+        a.samples = list(self.manual)
+        if not a.fit():
+            return None, ("Those points do not fit together. Check each dot was marked "
+                          "on the laser, and spread them out more.")
+        dropped = len(self.manual) - len(a.samples)
+        a.check_px = None
+        a.save()
+        self.aimer, self.at, self.error = a, time.time(), ""
+        return a, (f"{dropped} point(s) looked wrong and were ignored." if dropped else "")
+
+    def aimer_for(self, w: int, h: int) -> pixelcal.HomographyAimer:
         if self.aimer is None or (self.aimer.w, self.aimer.h) != (w, h):
-            self.aimer = follow.PixelAimer.load(w, h)
+            self.aimer = pixelcal.HomographyAimer.load(w, h)
         return self.aimer
 
     def claim(self) -> bool:
@@ -476,33 +557,34 @@ class PixelCalibrator:
             if self.running:
                 return False
             self.running, self.error, self.progress, self._cancel = True, "", "starting", False
+            self.fraction = 0.0
             return True
 
     def cancel(self) -> None:
         self._cancel = True
 
-    def run(self, link, next_frame, size) -> None:
-        cap = FrameSource(next_frame)
-        aimer = follow.PixelAimer(*size)
+    #: Manual calibration: points the user aimed at by hand, (pan, tilt, u, v).
+    MIN_MANUAL = 5
 
-        def show(_frame, _hit, caption):
-            self.progress = caption
-            if self._cancel:
-                raise _Cancelled()
-
+    def run(self, link, frame_after, size, down: float = -1.0,
+            base: "pixelcal.HomographyAimer | None" = None) -> None:
+        """Automatic calibration, or -- given `base` -- refine a manual one."""
+        def progress(msg, frac):
+            self.progress, self.fraction = msg, frac
         try:
-            ok = follow.calibrate(cap, link, aimer, show=show)
-            if ok:
-                self.aimer = aimer
-                self.at = time.time()
-                self.progress = "done"
+            eye = pixelcal.Eye(frame_after, link)
+            if base is not None:
+                self.aimer = pixelcal.refine(link, eye, base, progress, lambda: self._cancel)
             else:
-                self.error = ("Calibration failed: the camera never saw the laser dot "
-                              "move. Aim the head at the desk in view and try again.")
-        except _Cancelled:
+                self.aimer = pixelcal.calibrate(link, eye, size, progress,
+                                                lambda: self._cancel, down=down)
+            self.at = time.time()
+        except pixelcal.Cancelled:
             self.error = "Calibration stopped."
+        except RuntimeError as e:
+            self.error = str(e)
         except Exception as e:
-            self.error = f"Calibration failed: {e}"
+            self.error = f"Calibration failed: {type(e).__name__}: {e}"
         finally:
             try:
                 link.set_laser(False)
@@ -513,90 +595,93 @@ class PixelCalibrator:
     def status(self, w: int, h: int) -> dict:
         a = self.aimer_for(w, h) if w and h else self.aimer
         ready = bool(a and a.ready)
-        rms = a.rms_px if a else None
-        if not ready:
-            quality = "not calibrated"
-        elif rms is None:
-            quality = "calibrated"
-        else:
-            quality = "good" if rms < 15 else "rough" if rms < 40 else "poor"
+        err = None
+        if a and ready:
+            err = a.check_px if a.check_px is not None else a.rms_px
+        quality = ("not calibrated" if not ready else "calibrated" if err is None
+                   else "good" if err < 10 else "rough" if err < 25 else "poor")
         return {"mode": "pixels", "ready": ready, "running": self.running,
                 "progress": self.progress, "error": self.error,
-                "done": 0, "total": 0, "samples": len(a.samples) if a else 0,
-                "rmsPx": round(rms, 1) if rms is not None else None,
-                "rmsMm": None, "checked": 0, "at": self.at,
-                "quality": quality}
-
-
-class _Cancelled(Exception):
-    pass
+                "done": round(self.fraction * 100), "total": 100 if self.running else 0,
+                "samples": len(a.samples) if a else 0,
+                "rmsPx": round(err, 1) if err is not None else None,
+                "rmsMm": None, "checked": 0, "at": self.at, "quality": quality,
+                "manual": [[round(p, 1), round(t, 1), round(u), round(v)]
+                           for p, t, u, v in self.manual],
+                "fitPx": round(a.rms_px, 1) if a and a.ready and a.rms_px is not None else None}
 
 
 def _clamp(pan, tilt):
-    return (max(PAN_MIN, min(PAN_MAX, pan)), max(TILT_MIN, min(TILT_MAX, tilt)))
+    return (max(PAN_MIN, min(PAN_MAX, float(pan))), max(TILT_MIN, min(TILT_MAX, float(tilt))))
 
 
-def _angle_jacobian(aimer: follow.PixelAimer, u: float, v: float, d: float = 15.0):
-    """d(pan, tilt) / d(u, v) of the calibrated map, by finite difference."""
-    a0 = aimer.angles_for(u, v)
-    au = aimer.angles_for(u + d, v)
-    av = aimer.angles_for(u, v + d)
-    if not (a0 and au and av):
-        return None
-    return np.array([[(au[0] - a0[0]) / d, (av[0] - a0[0]) / d],
-                     [(au[1] - a0[1]) / d, (av[1] - a0[1]) / d]])
+def aim_closed_loop(link, aimer: pixelcal.HomographyAimer, frame_after,
+                    target: tuple[float, float], refine: bool = True,
+                    target_now=None) -> dict:
+    """Put the dot on an image position: model guess, then correct by looking.
 
-
-def aim_closed_loop(link, aimer: follow.PixelAimer, next_frame, target: tuple[float, float],
-                    refine: bool = True) -> dict:
-    """Put the dot on an image position: open-loop guess, then correct by looking.
-
-    Each correction blinks the laser off for one frame to find the dot without
-    ambiguity (follow.find_dot_blink), then moves by the remaining error through
-    the local slope of the calibrated map. Every reading is also a fresh
-    calibration sample, so the map gets better around where it is used.
+    Each correction blinks the laser to find the dot unambiguously, then moves
+    by the remaining error. The step is computed through the model itself
+    (where would the model have to aim to move the dot by this much), so it
+    stays right even near the edges where a degree moves the dot further.
+    Every reading is a fresh sample, so the calibration improves with use.
+    `target_now`, if given, re-reads the target each round (it may be moving).
     """
     tu, tv = target
     angles = aimer.angles_for(tu, tv)
     if angles is None:
-        return {"ok": False, "error": "No aim solution for that spot."}
-    pan, tilt = _clamp(*angles)
-    if not link.move(pan, tilt):
+        return {"ok": False, "error": "The laser cannot reach that spot."}
+    if not link.move(*_clamp(*angles)):
         return {"ok": False, "error": link.error or "The head did not answer."}
     link.set_laser(True)
     if not refine:
-        return {"ok": True, "pan": round(pan, 1), "tilt": round(tilt, 1), "missPx": None}
+        return {"ok": True, "pan": round(link.pose.pan, 1), "tilt": round(link.pose.tilt, 1),
+                "missPx": None}
 
-    cap = FrameSource(next_frame)
+    eye = pixelcal.Eye(frame_after, link)
     miss = None
-    for _ in range(AIM_ITERATIONS):
-        dot = follow.find_dot_blink(cap, link, aimer.zones)
+    seen = False
+    for n in range(AIM_ITERATIONS):
+        if target_now is not None:
+            tu, tv = target_now() or (tu, tv)
+        # Tell the detector where the model expects the dot, to break ties with
+        # reflections, and confirm the first reading with a second blink.
+        expect = aimer.pixel_for(link.pose.pan, link.pose.tilt) or (tu, tv)
+        dot = eye.blink(near=expect, confirm=(n == 0))
         if dot is None:
-            break                       # beam is off the visible surface; keep the guess
-        aimer.samples.append((link.pose.pan, link.pose.tilt, dot[0], dot[1]))
-        err = np.array([tu - dot[0], tv - dot[1]])
-        miss = float(np.hypot(*err))
+            break
+        seen = True
+        aimer.add_sample(link.pose.pan, link.pose.tilt, *dot)
+        miss = float(np.hypot(tu - dot[0], tv - dot[1]))
         if miss <= AIM_TOLERANCE_PX:
             break
-        J = _angle_jacobian(aimer, *dot)
-        if J is None:
+        # Move by the difference between "aim for the target" and "aim for
+        # where the dot actually is", through the model itself.
+        a_t, a_d = aimer.angles_for(tu, tv), aimer.angles_for(*dot)
+        if not (a_t and a_d):
             break
-        dp, dt = np.clip(J @ err * 0.85, -10, 10)
-        pan, tilt = _clamp(float(link.pose.pan + dp), float(link.pose.tilt + dt))
-        link.move(pan, tilt)
-    # Keep the map learning, but not unboundedly.
-    if len(aimer.samples) > 400:
-        aimer.samples = aimer.samples[-400:]
-    aimer.fit()
+        dp = float(np.clip(a_t[0] - a_d[0], -10, 10))
+        dt = float(np.clip(a_t[1] - a_d[1], -10, 10))
+        link.move(*_clamp(link.pose.pan + dp, link.pose.tilt + dt))
     link.set_laser(True)
-    return {"ok": True, "pan": round(link.pose.pan, 1), "tilt": round(link.pose.tilt, 1),
-            "missPx": None if miss is None else round(miss)}
+    out = {"ok": True, "pan": round(link.pose.pan, 1), "tilt": round(link.pose.tilt, 1),
+           "missPx": None if miss is None else round(miss), "seen": seen}
+    if not seen:
+        # Say so. Claiming success on an uncorrected guess is what made a far-off
+        # aim look like the system thought it was right.
+        out["warning"] = ("I aimed from the calibration but could not see the dot to "
+                          f"correct it ({pixelcal.LAST.get('why', 'not detected')}).")
+    return out
 
 
 class Follower:
-    """Keep the beam on one tracked object as it moves. Open loop, ~4 Hz."""
+    """Keep the beam on one tracked object as it moves.
 
-    DEADBAND_PX = 14.0
+    Open loop through the calibrated model at ~8 Hz -- YOLO's box is updated
+    every frame, so this just re-aims whenever the object moves.
+    """
+
+    DEADBAND_PX = 10.0
 
     def __init__(self) -> None:
         self.target_id = ""
@@ -615,12 +700,17 @@ class Follower:
 
         def run():
             last = None
-            while not stop.wait(0.25):
-                obj = next((o for o in scene.objects if o.id == oid), None)
+            gone = 0.0
+            while not stop.wait(0.12):
+                obj = scene.get(oid)
                 if obj is None or not link.connected:
                     break
                 if not obj.tracking:
+                    gone = gone or time.time()
+                    if time.time() - gone > 8:
+                        break
                     continue
+                gone = 0.0
                 c = obj.centre
                 if last is not None and np.hypot(c[0] - last[0], c[1] - last[1]) < self.DEADBAND_PX:
                     continue

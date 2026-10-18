@@ -3,3 +3,7 @@ opencv-python==5.0.0.93
 python-dotenv==1.2.3
 requests==2.34.2
 pyserial==3.5
+ultralytics==8.4.175
+lap>=0.5.12
+torch
+clip @ git+https://github.com/ultralytics/CLIP.git

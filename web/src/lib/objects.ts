@@ -20,6 +20,8 @@ export interface SceneObject {
   /** False when the tracker has lost it since the last identification. */
   tracking: boolean;
   ageS: number;
+  /** "yolo": followed every frame. "llm": named by the language model, not tracked yet. */
+  source?: "yolo" | "llm";
 }
 
 export interface Scene {
@@ -32,6 +34,9 @@ export interface Scene {
   detecting: boolean;
   error: string;
   summary: string;
+  tracker?: "yolo-world" | "loading" | "unavailable";
+  /** The service is aiming or calibrating and wants frames as fast as possible. */
+  fast?: boolean;
 }
 
 export const EMPTY_SCENE: Scene = {
@@ -52,7 +57,10 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
-export const analyseObjects = (image: string) => call<Scene>("objects/analyze", { image });
+/** `capturedAt` is when the frame was grabbed (seconds since epoch): the laser
+ *  calibration needs to know which pictures show the beam on and which off. */
+export const analyseObjects = (image: string, capturedAt?: number) =>
+  call<Scene>("objects/analyze", { image, capturedAt });
 /** Identify right now and wait for the answer -- for "what do you see?". */
 export const detectObjects = (image?: string | null) =>
   call<Scene>("objects/detect", image ? { image } : {});
@@ -65,6 +73,9 @@ export interface PointResult {
   object?: string;
   /** How far the dot ended up from the object's centre, in pixels. */
   missPx?: number | null;
+  /** False when the dot could not be seen, so the aim was not corrected. */
+  seen?: boolean;
+  warning?: string;
 }
 
 export const pointAtObject = (object: string) => call<PointResult>("objects/point", { object });

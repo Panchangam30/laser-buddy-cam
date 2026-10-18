@@ -15,6 +15,8 @@ export class OpenAIVoiceSession implements VoiceSession {
   private mic: MediaStream | null = null;
   private audio: HTMLAudioElement | null = null;
   private assistantBuf = "";
+  /** Set by disconnect(). A connect still in flight must not come alive after it. */
+  private closed = false;
 
   private opts: VoiceOpts;
 
@@ -35,6 +37,7 @@ export class OpenAIVoiceSession implements VoiceSession {
       });
       const tok = await tr.json();
       if (!tr.ok) throw new Error(tok.detail || tok.error || `token HTTP ${tr.status}`);
+      if (this.closed) return;
 
       const pc = new RTCPeerConnection();
       this.pc = pc;
@@ -47,13 +50,14 @@ export class OpenAIVoiceSession implements VoiceSession {
       this.mic = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      if (this.closed) { this.disconnect(); return; }
       this.mic.getTracks().forEach((t) => pc.addTrack(t, this.mic!));
 
       const dc = pc.createDataChannel("oai-events");
       this.dc = dc;
       dc.onmessage = (e) => this.onEvent(JSON.parse(e.data));
       dc.onopen = () => this.opts.onStatus("live");
-      dc.onclose = () => this.opts.onStatus("idle");
+      dc.onclose = () => { if (!this.closed) this.opts.onStatus("idle"); };
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -65,7 +69,9 @@ export class OpenAIVoiceSession implements VoiceSession {
       });
       if (!sdpRes.ok) throw new Error(`SDP exchange failed: ${sdpRes.status} ${(await sdpRes.text()).slice(0, 200)}`);
 
-      await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
+      const answer = await sdpRes.text();
+      if (this.closed) { this.disconnect(); return; }
+      await pc.setRemoteDescription({ type: "answer", sdp: answer });
     } catch (e) {
       this.opts.onStatus("error", e instanceof Error ? e.message : String(e));
       this.disconnect();
@@ -73,6 +79,7 @@ export class OpenAIVoiceSession implements VoiceSession {
   }
 
   disconnect() {
+    this.closed = true;
     this.dc?.close();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.pc?.close();

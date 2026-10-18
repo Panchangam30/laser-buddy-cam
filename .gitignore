@@ -11,3 +11,11 @@ web/node_modules/
 web/dist/
 calibration.json
 pixel_calibration.json
+pixel_homography.json
+models/
+laser_prefs.json
+
+# Downloaded AI model weights (YOLO-World, CLIP) -- fetched automatically on
+# first run, hundreds of MB, never committed.
+weights/
+*.pt

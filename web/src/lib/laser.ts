@@ -24,6 +24,10 @@ export interface Calibration {
   at: number;
   /** The same number said in holes, which is the unit that matters. */
   quality: string;
+  /** Manual calibration points so far: [pan, tilt, u, v]. */
+  manual?: [number, number, number, number][];
+  /** How well the points fit the model, in pixels. */
+  fitPx?: number | null;
   workspaceProfileId?: string;
   workspaceProfileVersion?: number;
 }
@@ -40,6 +44,8 @@ export interface LaserStatus {
   calibration: Calibration;
   /** The board-free camera-pixel calibration used in object mode. */
   pixelCalibration?: Calibration;
+  /** Which way the arrows turn the head on this rig. */
+  prefs?: LaserPrefs;
   /** Id of the object the beam is following, or "". */
   following?: string;
   /** A serial port that looks like the Arduino, whether or not we are on it. */
@@ -77,7 +83,7 @@ export const calibrate = () => call("laser/calibrate", {});
 export const cancelCalibration = () => call("laser/cancel", {});
 
 export type Direction = "left" | "right" | "up" | "down";
-export type NudgeSize = "tiny" | "small" | "medium" | "large";
+export type NudgeSize = "fine" | "tiny" | "small" | "medium" | "large";
 
 export interface MoveResult {
   ok: boolean;
@@ -87,6 +93,8 @@ export interface MoveResult {
   movedBy?: number;
   /** True when an axis is against its stop and further nudges will do nothing. */
   atLimit?: boolean;
+  /** Plain-language explanation when a move was stopped by a limit. */
+  limit?: string;
   laserOn?: boolean;
 }
 
@@ -121,3 +129,19 @@ export const pointAtLocation = (
   }
   return call("laser/point", { target });
 };
+
+export interface LaserPrefs { invertPan: boolean; invertTilt: boolean; ok?: boolean; error?: string }
+export const setLaserPrefs = (prefs: Partial<LaserPrefs>): Promise<LaserPrefs> => call("laser/prefs", prefs);
+
+/* Manual calibration: aim by hand, mark the dot, repeat, finish. */
+export const manualDetect = (): Promise<{ ok: boolean; error?: string; dot: [number, number] | null; why?: string }> =>
+  call("laser/manual/detect", {});
+/** Record where the head points now. Without u/v the dot is found automatically. */
+export const manualAdd = (u?: number, v?: number): Promise<{ ok: boolean; error?: string; count?: number }> =>
+  call("laser/manual/add", u === undefined ? {} : { u, v });
+export const manualUndo = () => call("laser/manual/undo", {});
+export const manualClear = () => call("laser/manual/clear", {});
+export const manualFinish = (refine: boolean): Promise<{
+  ok: boolean; error?: string; fitPx?: number; points?: number; note?: string; refining?: boolean;
+}> => call("laser/manual/finish", { refine });
+export const calibrateAuto = () => call("laser/calibrate", { mode: "pixels" });

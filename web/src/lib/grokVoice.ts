@@ -19,6 +19,8 @@ export class GrokVoiceSession implements VoiceSession {
   private opts: VoiceOpts;
   private assistantBuf = "";
   private pendingTools = 0;
+  /** Set by disconnect(). A connect still in flight must not come alive after it. */
+  private closed = false;
 
   constructor(opts: VoiceOpts) { this.opts = opts; }
 
@@ -30,6 +32,9 @@ export class GrokVoiceSession implements VoiceSession {
       const tr = await fetch("/api/xai-realtime-token", { method: "POST" });
       const tok = await tr.json();
       if (!tr.ok) throw new Error(tok.detail || tok.error || `token HTTP ${tr.status}`);
+      // Hung up while the token was being fetched: opening the socket now would
+      // start a session nothing can reach -- its own mic, its own voice.
+      if (this.closed) return;
 
       // The browser cannot set headers on a WebSocket, so the token rides in
       // the subprotocol field -- this is xAI's documented browser path.
@@ -37,13 +42,15 @@ export class GrokVoiceSession implements VoiceSession {
       this.ws = ws;
 
       ws.onopen = () => {
+        if (this.closed) { ws.close(1000, "client closed"); return; }
         this.configure();
         void this.startMic();
         this.opts.onStatus("live");
       };
       ws.onmessage = (e) => this.onEvent(e.data);
-      ws.onerror = () => this.opts.onStatus("error", "WebSocket error connecting to xAI");
+      ws.onerror = () => { if (!this.closed) this.opts.onStatus("error", "WebSocket error connecting to xAI"); };
       ws.onclose = (e) => {
+        if (this.closed) { this.teardown(); return; }
         if (e.code !== 1000 && e.reason) this.opts.onStatus("error", `closed: ${e.reason}`);
         else this.opts.onStatus("idle");
         this.teardown();
@@ -72,15 +79,20 @@ export class GrokVoiceSession implements VoiceSession {
 
   private async startMic() {
     try {
+      if (this.closed) return;
       await this.mic.start((pcm) => {
         this.send({ type: "input_audio_buffer.append", audio: toBase64(pcm.buffer) });
       });
+      // Hung up while the mic permission prompt was open.
+      if (this.closed) this.mic.stop();
     } catch (e) {
+      if (this.closed) return;
       this.opts.onStatus("error", `Microphone unavailable: ${e instanceof Error ? e.message : e}`);
     }
   }
 
   disconnect() {
+    this.closed = true;
     this.teardown();
     this.ws?.close(1000, "client closed");
     this.ws = null;
@@ -133,6 +145,7 @@ export class GrokVoiceSession implements VoiceSession {
 
     switch (ev.type) {
       case "response.output_audio.delta": {
+        if (this.closed) break;
         const b64 = (ev.delta ?? ev.audio) as string | undefined;
         if (b64) this.player.push(fromBase64(b64));
         break;

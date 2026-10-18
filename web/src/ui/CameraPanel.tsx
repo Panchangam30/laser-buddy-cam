@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from "react";
+import type { Scene } from "../lib/objects";
 
 /**
  * Live webcam preview with a capture button. Capture downscales to 1024px on the
  * long side before encoding -- full-resolution frames cost more tokens without
  * helping the model read anything.
  */
-export function CameraPanel({ onCapture, busy, registerGrab }: {
+export function CameraPanel({ onCapture, busy, registerGrab, floating = false, hidden = false, scene }: {
   onCapture: (dataUrl: string) => void;
   busy: boolean;
+  /** Picture-in-picture over the board, bottom right. */
+  floating?: boolean;
+  /** Kept mounted (frames are still grabbed from it) but not shown. */
+  hidden?: boolean;
+  /** Tracked objects, boxed over the video so you see what the TA sees. */
+  scene?: Scene;
   /** Hands the parent a function to grab a frame on demand (used by voice). */
   registerGrab?: (fn: () => string | null) => void;
 }) {
@@ -56,14 +63,28 @@ export function CameraPanel({ onCapture, busy, registerGrab }: {
     if (d) onCapture(d);
   }
 
+  const cls = ["camera", floating && "camera-pip", hidden && "camera-hidden"]
+    .filter(Boolean).join(" ");
+
   return (
-    <div className="camera">
+    <div className={cls} aria-hidden={hidden || undefined}>
       {error ? (
         <p className="camera-error">{error}</p>
       ) : (
         <>
           <div className="camera-frame" data-ready={ready}>
             <video ref={videoRef} autoPlay playsInline muted />
+            {ready && scene && scene.size[0] > 0 && (
+              <svg className="cam-boxes" viewBox={`0 0 ${scene.size[0]} ${scene.size[1]}`}
+                preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                {scene.objects.filter((o) => o.tracking).map((o) => (
+                  <g key={o.id}>
+                    <rect x={o.box[0]} y={o.box[1]} width={o.box[2]} height={o.box[3]} rx={8} />
+                    <text x={o.box[0] + 6} y={Math.max(30, o.box[1] - 10)}>{o.label}</text>
+                  </g>
+                ))}
+              </svg>
+            )}
             {!ready && <p className="camera-waiting">Waiting for the camera</p>}
           </div>
           <button className="capture" onClick={capture} disabled={!ready || busy}>

@@ -4,6 +4,7 @@ import {
   NO_LASER, type LaserStatus,
 } from "../lib/laser";
 import { calibratePixels, type TrackMode } from "../lib/objects";
+import { CalibrationWizard } from "./CalibrationWizard";
 import { isTargetable, locationLabel, type WorkspaceLocation } from "../lib/workspace";
 
 /**
@@ -13,8 +14,10 @@ import { isTargetable, locationLabel, type WorkspaceLocation } from "../lib/work
  * not plugged in, plugged in but not calibrated, and ready to point. Calibration
  * is the step people skip, so until it has been done nothing else is offered.
  */
-export function LaserPanel({ mode = "board", targets, why, tracking, boardFound, worldFrame, onStartTracking }: {
+export function LaserPanel({ mode = "board", targets, why, tracking, boardFound, worldFrame, onStartTracking, frameSize = [1024, 576] }: {
   mode?: TrackMode;
+  /** Pixel size of the frames the service sees, for the manual calibration view. */
+  frameSize?: [number, number];
   targets: WorkspaceLocation[];
   why: string;
   tracking: boolean;
@@ -24,6 +27,7 @@ export function LaserPanel({ mode = "board", targets, why, tracking, boardFound,
 }) {
   const [s, setS] = useState<LaserStatus>(NO_LASER);
   const [busy, setBusy] = useState("");
+  const [wizard, setWizard] = useState(false);
   const [err, setErr] = useState("");
   const [calibrationQueuedAfter, setCalibrationQueuedAfter] = useState<number | null>(null);
 
@@ -109,12 +113,12 @@ export function LaserPanel({ mode = "board", targets, why, tracking, boardFound,
         </>
       ) : (
         <>
-          {objectMode ? (
+          {objectMode && !target ? (
             <div className="trackbar">
               <span className="hint" style={{ margin: 0 }}>
                 {s.following ? `Following ${s.aimedAt || "an object"}`
                   : s.laserOn ? `On${s.aimedAt ? ` — ${s.aimedAt}` : ""}`
-                  : "Use Point or Follow on an object, or ask the assistant."}
+                  : "Point at anything from the desk list, or ask the TA."}
               </span>
               {s.laserOn && (
                 <button className="ghostbtn" onClick={() => run("off", laserOff)}>Laser off</button>
@@ -159,7 +163,7 @@ export function LaserPanel({ mode = "board", targets, why, tracking, boardFound,
             <div className="trackbar">
               <button className="ghostbtn"
                       disabled={!!busy || calibrationQueuedAfter !== null}
-                      onClick={startCalibration}>
+                      onClick={objectMode ? () => setWizard(true) : startCalibration}>
                 {calibrationQueuedAfter !== null ? (objectMode ? "Starting camera…" : "Finding board…")
                   : busy === "calibrate" ? "Starting…"
                   : cal.ready ? "Recalibrate" : "Calibrate"}
@@ -181,14 +185,18 @@ export function LaserPanel({ mode = "board", targets, why, tracking, boardFound,
 
           {!cal.ready && !cal.running && calibrationQueuedAfter === null && (
             <p className="hint">{objectMode
-              ? "Aim the head so the beam lands on the desk in camera view. Takes 2–3 minutes; keep hands out of the way."
+              ? "Opens a guided calibration: steer the dot onto the desk with the arrows and mark it at 6 or more spots."
               : "Needs board tracking on. Takes about a minute."}</p>
           )}
         </>
       )}
 
-      {(err || s.error || cal.error) && (
-        <p className="error">{err || s.error || cal.error}</p>
+      {/* Not connected already says why above; don't repeat it in red. */}
+      {(err || (s.connected && s.error) || cal.error) && (
+        <p className="error">{err || (s.connected && s.error) || cal.error}</p>
+      )}
+      {wizard && (
+        <CalibrationWizard frameSize={frameSize} onClose={() => { setWizard(false); void laserStatus().then(setS); }} />
       )}
     </section>
   );

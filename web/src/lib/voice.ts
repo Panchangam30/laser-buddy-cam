@@ -33,9 +33,9 @@ export const TOOLS = [
   {
     type: "function",
     name: "look_at_board",
-    description: "Take a photo through the webcam and look at it. Use this when the "
-      + "student asks about what is physically in front of them, says something is "
-      + "not working, or asks you to check their wiring.",
+    description: "Take a photo through the webcam and look at it closely yourself. "
+      + "Use it to read text or markings, judge colour or condition, see what is on "
+      + "a screen, or check wiring by eye -- anything the live object list cannot tell you.",
     parameters: { type: "object", properties: {}, required: [] },
   },
   {
@@ -102,13 +102,14 @@ export const TOOLS = [
         },
         amount: {
           type: "string",
-          enum: ["tiny", "small", "medium", "large"],
-          description: "How far. 'tiny' is a couple of degrees, 'large' crosses "
-            + "most of the working area. Default small. Map 'a bit'/'slightly' "
-            + "to tiny or small, and 'a lot'/'way over' to large.",
+          enum: ["fine", "tiny", "small", "medium", "large"],
+          description: "How far. 'fine' is one degree, 'tiny' two, 'small' five, "
+            + "'large' crosses most of the working area. Default small. Map "
+            + "'a hair'/'just a touch' to fine, 'a bit'/'slightly' to tiny, and "
+            + "'a lot'/'way over' to large.",
         },
         pan: { type: "number", description: "Absolute pan angle, 10 to 170." },
-        tilt: { type: "number", description: "Absolute tilt angle, 20 to 160." },
+        tilt: { type: "number", description: "Absolute tilt angle, 0 to 180." },
       },
       required: [],
     },
@@ -205,8 +206,66 @@ export const OBJECT_TOOLS = [
   ...LASER_TOOLS,
 ];
 
-export function toolsFor(mode: TrackMode = "objects") {
-  return mode === "board" ? TOOLS : OBJECT_TOOLS;
+/** Everything the assistant can do: desk objects, the build, and the laser. */
+export const ALL_TOOLS = [
+  ...OBJECT_TOOLS.filter((t) => !["look_closely", "move_laser", "laser_power", "centre_laser"].includes(t.name)),
+  ...TOOLS,
+];
+
+export function toolsFor(mode: TrackMode | "all" = "all") {
+  return mode === "board" ? TOOLS : mode === "objects" ? OBJECT_TOOLS : ALL_TOOLS;
+}
+
+/**
+ * The one assistant: sees the whole desk through the camera at all times, and
+ * also knows the breadboard project when there is one. Not breadboard-only --
+ * a phone, a mug or a pencil is as much in scope as a resistor.
+ */
+export function buildAssistantInstructions(plan: Plan, step: number, live?: string,
+  challenge?: ChallengeVoiceContext): string {
+  const steps = plan.steps
+    .map((s) => `  ${s.n}. ${s.title} -- ${s.instruction}${s.warning ? ` WARNING: ${s.warning}` : ""}`)
+    .join("\n") || "  (none)";
+  return `You are a friendly lab assistant sitting next to the user. You can see their
+desk through a webcam at all times, and you have a laser pointer on a pan/tilt
+head that can point at anything on the desk. You help with whatever is in front
+of them: everyday objects (a phone, a pencil, a mug, tools) and, when they are
+building one, an Arduino breadboard circuit.
+
+SPEAK LIKE A PERSON AT A DESK. One or two short sentences. No lists, no
+preamble, no "great question".
+
+WHAT YOU CAN SEE. The desk list below updates live: an object tracker follows
+everything in view every frame, and a vision model names things every few
+seconds. Each object has an id like obj3 and a position in words ("near left"
+= close to the camera, on the left). Trust it -- you are always looking. If the
+user mentions something not in the list, or asks what you see, call
+describe_scene for a fresh look. Use look_at_board to read text or markings or
+to inspect something closely. Never claim to see what is not in the list or a
+photo, and never guess text you cannot read.
+
+THE LASER. To show where something is, point at it rather than describing it:
+point_at_object for an object, point_at for a breadboard hole. "Follow" or
+"track" an object is follow_object. "Left a bit", "up", "centre it" are
+move_laser. Move first, then speak, so beam and words arrive together. If a tool
+says the laser is not calibrated, tell them to press Calibrate in the Laser
+panel. Never aim at a person's face; refuse if asked.
+
+THE BREADBOARD PROJECT, if they are building it. Holes are <row><column>:
+rows A-E share a node per column, F-J are a separate node, the centre channel
+splits them; rails are T+, T-, B+, B-; EXT: means off the board (an Arduino
+pin). Use goto_step when you discuss a step, check_progress when they ask how
+the build is going, and never guess a resistor value you cannot read.
+Project: ${plan.title} -- ${plan.summary}
+${plan.problem ? `Unresolved problem: ${plan.problem}\n` : ""}Steps:
+${steps}
+They are on step ${step}.
+${challenge ? `
+TROUBLESHOOTING CHALLENGE: ${challenge.title}. ${challenge.prompt}
+Hint level ${challenge.hintLevel} of 3 unlocked: ${challenge.hints.slice(0, challenge.hintLevel).join(" | ")}
+Do not reveal later hints or the faulty hole before level 3; ask a guiding question instead.` : ""}
+
+${live || "Nothing has been seen yet; call describe_scene."}`;
 }
 
 /** System prompt for object mode. */
@@ -319,8 +378,8 @@ above will say so.`;
 }
 
 export interface VoiceOpts {
-  /** What is being tracked: anything on the desk, or a breadboard build. */
-  mode?: TrackMode;
+  /** Which prompt and tools. "all" (the default) is the one unified assistant. */
+  mode?: TrackMode | "all";
   plan: Plan;
   step: number;
   challenge?: ChallengeVoiceContext;
@@ -333,9 +392,9 @@ export interface VoiceOpts {
 
 /** The system prompt for whichever mode the session is in. */
 export function instructionsFor(opts: VoiceOpts, live?: string): string {
-  return opts.mode === "board"
-    ? buildInstructions(opts.plan, opts.step, live, opts.challenge)
-    : buildObjectInstructions(live);
+  if (opts.mode === "board") return buildInstructions(opts.plan, opts.step, live, opts.challenge);
+  if (opts.mode === "objects") return buildObjectInstructions(live);
+  return buildAssistantInstructions(opts.plan, opts.step, live, opts.challenge);
 }
 
 /** What the app needs from a voice provider, whoever it is. */

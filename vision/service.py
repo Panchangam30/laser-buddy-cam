@@ -43,7 +43,7 @@ import cv2
 import numpy as np
 
 from . import board as bd
-from . import geometry as g, label, objects, world, workspace as ws
+from . import geometry as g, label, objects, pixelcal, world, workspace as ws
 from .aim import Calibrator, find_dot
 from .laser import LaserLink, find_port
 from .track import Tracker
@@ -103,17 +103,32 @@ class VisionEngine:
         self._world = world.World(board={"found": False, "reason": "no frame analysed yet"})
         self._errors: list[str] = []
         self.scene = objects.ObjectScene(api_key)
+        self._aiming = 0
         self.pixel_cal = objects.PixelCalibrator()
         self.follower = objects.Follower()
 
     # ------------------------------------------------------------ object mode
 
-    def analyse_objects(self, frame: np.ndarray) -> dict:
+    #: Without a capture time, assume a frame was taken this long before it
+    #: arrived (JPEG encode + upload). Conservative on purpose.
+    UNSTAMPED_AGE_S = 0.15
+
+    def analyse_objects(self, frame: np.ndarray, captured_at: float | None = None) -> dict:
+        now = time.time()
         with self._lock:
             self._frames += 1
             self._frame = frame
-            self._frame_at = time.time()
-        return self.scene.update(frame)
+            self._frame_at = now
+            # When the browser says when it grabbed the frame, trust that over
+            # arrival time: it is what decides whether the frame shows the laser
+            # on or off. Same machine, same clock; reject nonsense anyway.
+            ok = captured_at is not None and now - 5 < captured_at <= now + 0.05
+            self._frame_cap = captured_at if ok else now - self.UNSTAMPED_AGE_S
+        snap = self.scene.update(frame)
+        # While the laser is being aimed or calibrated, ask the browser for
+        # frames as fast as it can send them: every blink waits for fresh ones.
+        snap["fast"] = bool(self._aiming or self.pixel_cal.running)
+        return snap
 
     def _frame_size(self) -> tuple[int, int]:
         w, h = self.scene.size
@@ -148,7 +163,18 @@ class VisionEngine:
         if not aimer.covers(*target):
             return {"ok": False, "error":
                     f"The {obj.label} is outside the area the laser can reach."}
-        r = objects.aim_closed_loop(self.laser, aimer, self.next_frame, target, refine)
+        oid = obj.id
+
+        def target_now():
+            o = self.scene.get(oid)
+            return o.centre if o is not None and o.tracking else None
+
+        self._aiming += 1
+        try:
+            r = objects.aim_closed_loop(self.laser, aimer, self.frame_after, target, refine,
+                                        target_now=target_now)
+        finally:
+            self._aiming -= 1
         if r.get("ok"):
             aimer.save()
             with self._lock:
@@ -179,9 +205,10 @@ class VisionEngine:
         if not self.pixel_cal.claim():
             return {"ok": False, "error": "Already calibrating."}
         self.follower.stop()
+        down = self._direction("down")[1]
         threading.Thread(target=self.pixel_cal.run,
-                         args=(self.laser, self.next_frame, self._frame_size()),
-                         daemon=True).start()
+                         args=(self.laser, self.frame_after, self._frame_size()),
+                         kwargs={"down": down}, daemon=True).start()
         return {"ok": True}
 
     # ------------------------------------------------------------------ analyse
@@ -191,6 +218,7 @@ class VisionEngine:
             self._frames += 1
             self._frame = frame
             self._frame_at = time.time()
+            self._frame_cap = self._frame_at - self.UNSTAMPED_AGE_S
             pose = self.workspace_runtime.locate(frame, flipped=self.flipped)
             self._pose = pose
 
@@ -228,6 +256,22 @@ class VisionEngine:
                 if (b.centre[0] - ax) ** 2 + (b.centre[1] - az) ** 2
                 > LASER_IGNORE_MM ** 2]
 
+    def frame_after(self, t: float, timeout: float = 3.0):
+        """The first frame that ARRIVED after time `t` (which may be in the future).
+
+        Object-mode calibration passes now + the camera's latency, so the frame
+        it gets is known to show the laser and head as they are now -- a frame
+        that merely arrives after the call may have been captured before it.
+        """
+        deadline = max(time.time(), t) + timeout
+        while time.time() < deadline:
+            with self._lock:
+                cap = getattr(self, "_frame_cap", self._frame_at - self.UNSTAMPED_AGE_S)
+                if self._frame is not None and cap > t:
+                    return self._frame.copy()
+            time.sleep(0.02)
+        return None
+
     def next_frame(self, timeout: float = 3.0):
         """A frame that arrived after this call, for the calibration loop.
 
@@ -251,11 +295,34 @@ class VisionEngine:
     # ---------------------------------------------------------------- pointing
 
     def point_at(self, x: float, z: float, hole: str = "") -> dict:
-        """Aim the laser at a board position and switch it on."""
-        aimer = self.calibrator.aimer
+        """Aim the laser at a board position and switch it on.
+
+        Prefers the camera-pixel calibration, which needs no board in view to
+        calibrate and self-corrects by watching the dot: the board's pose turns
+        the hole into a camera pixel, and the pixel is aimed at like any object.
+        Falls back to the older board-millimetre calibration.
+        """
         problem = self._ready()
         if problem:
             return {"ok": False, "error": problem}
+        pose = self._pose
+        pix_aimer, _why = self._pixel_aimer()
+        if pix_aimer is not None and not isinstance(pose, bd.NoBoard) and not self.pixel_cal.running:
+            u, v = (float(c) for c in pose.to_image(np.array([[x, z]], np.float32))[0])
+            if pix_aimer.covers(u, v):
+                self.follower.stop()
+                self._aiming += 1
+                try:
+                    r = objects.aim_closed_loop(self.laser, pix_aimer, self.frame_after, (u, v))
+                finally:
+                    self._aiming -= 1
+                if r.get("ok"):
+                    pix_aimer.save()
+                    with self._lock:
+                        self._aimed_at = (x, z)
+                        self._aimed_hole = hole
+                    return {**r, "hole": hole}
+        aimer = self.calibrator.aimer
         if not aimer.ready:
             return {"ok": False, "error": "The laser has not been calibrated yet."}
         if not aimer.covers(x, z):
@@ -292,7 +359,7 @@ class VisionEngine:
 
     #: Degrees per nudge. Sized for speech: "a bit" should be a visible change
     #: without being a lurch, and three of them should cross the working area.
-    NUDGE = {"tiny": 2.0, "small": 5.0, "medium": 12.0, "large": 25.0}
+    NUDGE = {"fine": 1.0, "tiny": 2.0, "small": 5.0, "medium": 12.0, "large": 25.0}
 
     #: Which way each spoken direction turns the servos. Pan is inverted because
     #: on this rig increasing pan carries the dot to the LEFT of the camera's
@@ -304,6 +371,89 @@ class VisionEngine:
         "up":    (0.0, +1.0),
         "down":  (0.0, -1.0),
     }
+
+    PREFS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "laser_prefs.json")
+
+    def _load_prefs(self) -> dict:
+        try:
+            with open(self.PREFS_FILE) as fh:
+                d = json.load(fh)
+            return {"invertPan": bool(d.get("invertPan")), "invertTilt": bool(d.get("invertTilt"))}
+        except (OSError, json.JSONDecodeError):
+            return {"invertPan": False, "invertTilt": False}
+
+    def set_prefs(self, body: dict) -> dict:
+        prefs = self._load_prefs()
+        for k in ("invertPan", "invertTilt"):
+            if k in body:
+                prefs[k] = bool(body[k])
+        try:
+            with open(self.PREFS_FILE, "w") as fh:
+                json.dump(prefs, fh)
+        except OSError:
+            pass
+        return prefs
+
+    def _direction(self, key: str) -> tuple[float, float]:
+        """A spoken/arrow direction as servo signs, after this rig's flips.
+
+        Heads are mounted every which way, so "up" turning the beam up is a
+        setting, not an assumption: flip it once and the arrows, the voice and
+        the calibration search all agree.
+        """
+        dp, dt = self.DIRECTION[key]
+        prefs = self._load_prefs()
+        return (-dp if prefs["invertPan"] else dp, -dt if prefs["invertTilt"] else dt)
+
+    # -------------------------------------------------- manual calibration
+
+    def manual_detect(self) -> dict:
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        self._aiming += 1
+        try:
+            dot = pixelcal.Eye(self.frame_after, self.laser).blink(confirm=True)
+        finally:
+            self._aiming -= 1
+        return {"ok": True, "dot": [round(dot[0]), round(dot[1])] if dot else None,
+                "why": pixelcal.LAST.get("why", ""),
+                "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
+
+    def manual_add(self, u=None, v=None) -> dict:
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        if u is None or v is None:
+            self._aiming += 1
+            try:
+                dot = pixelcal.Eye(self.frame_after, self.laser).blink(confirm=True)
+            finally:
+                self._aiming -= 1
+            if dot is None:
+                return {"ok": False, "error":
+                        f"I could not find the dot ({pixelcal.LAST.get('why', 'not detected')}). "
+                        "Click on it in the picture instead."}
+            u, v = dot
+        self.pixel_cal.manual.append((float(self.laser.pose.pan), float(self.laser.pose.tilt),
+                                      float(u), float(v)))
+        return {"ok": True, "count": len(self.pixel_cal.manual), "point": [round(u), round(v)]}
+
+    def manual_finish(self, refine: bool) -> dict:
+        size = self._frame_size()
+        if not size[0]:
+            return {"ok": False, "error": "No camera frames yet."}
+        aimer, note = self.pixel_cal.finish_manual(size)
+        if aimer is None:
+            return {"ok": False, "error": note}
+        result = {"ok": True, "fitPx": round(aimer.rms_px or 0, 1), "points": len(aimer.samples),
+                  "note": note}
+        if refine and self.pixel_cal.claim():
+            threading.Thread(target=self.pixel_cal.run,
+                             args=(self.laser, self.frame_after, size),
+                             kwargs={"base": aimer}, daemon=True).start()
+            result["refining"] = True
+        return result
 
     def _ready(self) -> str:
         """Make sure the head is usable. Returns "" when it is, else why not.
@@ -338,18 +488,31 @@ class VisionEngine:
         if key not in self.DIRECTION:
             return {"ok": False, "error": f"I can move left, right, up or down, not {direction!r}"}
         step = self.NUDGE.get((amount or "small").strip().lower(), self.NUDGE["small"])
-        dp, dt = self.DIRECTION[key]
-        ok = self.laser.move(self.laser.pose.pan + dp * step,
-                             self.laser.pose.tilt + dt * step)
+        dp, dt = self._direction(key)
+        want_p = self.laser.pose.pan + dp * step
+        want_t = self.laser.pose.tilt + dt * step
+        ok = self.laser.move(want_p, want_t)
         if not ok:
             return {"ok": False, "error": self.laser.error or "The head did not answer."}
         # Report when an axis is against its stop, so the assistant can say so
-        # rather than repeating a move that will not do anything.
-        from .laser import PAN_MAX, PAN_MIN, TILT_MAX, TILT_MIN
-        at_limit = (self.laser.pose.pan in (PAN_MIN, PAN_MAX)
-                    or self.laser.pose.tilt in (TILT_MIN, TILT_MAX))
-        return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt,
-                "movedBy": step, "atLimit": at_limit}
+        # rather than repeating a move that will not do anything. Judged by where
+        # the head says it went -- the firmware's reply -- not by this file's
+        # constants, so a board still running older, narrower limits is caught.
+        got_p, got_t = self.laser.pose.pan, self.laser.pose.tilt
+        stuck = ("tilt" if abs(got_t - want_t) > 0.6 else
+                 "pan" if abs(got_p - want_p) > 0.6 else "")
+        limit = ""
+        if stuck == "tilt":
+            limit = (f"Tilt stopped at {got_t:.0f} degrees. "
+                     + ("That is the servo's end of travel; to aim further, re-seat the "
+                        "servo horn one tooth round or angle the head mount."
+                        if got_t <= 0.5 or got_t >= 179.5 else
+                        "That is a software limit in the Arduino firmware; re-upload "
+                        "firmware/laserbuddy to use the servo's full range."))
+        elif stuck == "pan":
+            limit = f"Pan stopped at {got_p:.0f} degrees (its limit)."
+        return {"ok": True, "pan": got_p, "tilt": got_t,
+                "movedBy": step, "atLimit": bool(stuck), "limit": limit}
 
     def laser_power(self, on: bool) -> dict:
         problem = self._ready()
@@ -404,6 +567,7 @@ class VisionEngine:
                 "aimedAt": self._aimed_hole,
                 "calibration": self.calibrator.status(),
                 "pixelCalibration": self.pixel_cal.status(*self._frame_size()),
+                "prefs": self._load_prefs(),
                 "following": self.follower.target_id,
                 "portAvailable": find_port()}
 
@@ -614,6 +778,12 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.take_remote())
             if path == "/vision/objects":
                 return self._json(200, engine.scene.snapshot())
+            if path == "/vision/laser/dot.jpg":
+                img = pixelcal.debug_image()
+                if img is None:
+                    return self._json(404, {"error": "the detector has not looked yet"})
+                ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                return self._send(200, buf.tobytes(), "image/jpeg")
             if path == "/vision/debug.jpg" and "view=objects" in query:
                 frame = engine._frame
                 if frame is None:
@@ -665,7 +835,9 @@ def make_handler(engine: VisionEngine):
                         frame if frame is not None else engine._frame))
                 if frame is None:
                     return self._json(400, {"error": "no image supplied"})
-                return self._json(200, engine.analyse_objects(frame))
+                cap = body.get("capturedAt")
+                return self._json(200, engine.analyse_objects(
+                    frame, float(cap) if isinstance(cap, (int, float)) else None))
 
             if self.path == "/vision/objects/point":
                 return self._json(200, engine.point_at_object(
@@ -738,6 +910,24 @@ def make_handler(engine: VisionEngine):
                 if body.get("mode") == "pixels":
                     return self._json(200, engine.start_pixel_calibration())
                 return self._json(200, engine.start_calibration())
+
+            if self.path == "/vision/laser/prefs":
+                return self._json(200, engine.set_prefs(body))
+            if self.path == "/vision/laser/manual/detect":
+                return self._json(200, engine.manual_detect())
+            if self.path == "/vision/laser/manual/add":
+                u, v = body.get("u"), body.get("v")
+                ok = isinstance(u, (int, float)) and isinstance(v, (int, float))
+                return self._json(200, engine.manual_add(u if ok else None, v if ok else None))
+            if self.path == "/vision/laser/manual/undo":
+                if engine.pixel_cal.manual:
+                    engine.pixel_cal.manual.pop()
+                return self._json(200, {"ok": True, "count": len(engine.pixel_cal.manual)})
+            if self.path == "/vision/laser/manual/clear":
+                engine.pixel_cal.manual.clear()
+                return self._json(200, {"ok": True, "count": 0})
+            if self.path == "/vision/laser/manual/finish":
+                return self._json(200, engine.manual_finish(bool(body.get("refine"))))
 
             if self.path == "/vision/laser/cancel":
                 engine.calibrator.cancel()

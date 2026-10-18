@@ -158,6 +158,27 @@ app.post("/api/plan/goal", (req, res) => {
 });
 
 /** Step text -> spoken audio, via Grok TTS. Returns mp3 bytes. */
+/**
+ * One live voice conversation at a time, across every tab and browser.
+ *
+ * Two copies of the app open (a second tab, or VS Code's preview and Chrome)
+ * each ran their own TA: two voices, and muting one left the other listening.
+ * A starting conversation claims the voice here; every copy polls the owner and
+ * hangs up when it is no longer theirs.
+ */
+let voiceOwner = "";
+app.post("/api/voice/claim", (req, res) => {
+  const id = String(req.body?.id ?? "").slice(0, 64);
+  if (!id) return res.status(400).json({ error: "no id" });
+  voiceOwner = id;
+  res.json({ ok: true, owner: voiceOwner });
+});
+app.post("/api/voice/release", (req, res) => {
+  if (String(req.body?.id ?? "") === voiceOwner) voiceOwner = "";
+  res.json({ ok: true, owner: voiceOwner });
+});
+app.get("/api/voice/owner", (_req, res) => { res.json({ owner: voiceOwner }); });
+
 app.post("/api/speak", async (req, res) => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!text) return res.status(400).json({ error: "no text" });

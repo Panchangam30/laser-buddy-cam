@@ -75,8 +75,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
       dpr={[1, 2]}
       // Distance chosen to frame the whole 162mm board with margin at this fov.
       camera={{ position: [0, 158, 205], fov: 36 }}
-      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.82 }}
-      style={{ background: "radial-gradient(120% 90% at 50% 18%, #1c2028 0%, #0b0c0f 70%)" }}
+      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.95 }}
+      style={{ background: "radial-gradient(120% 90% at 50% 22%, #2b2e34 0%, #1a1c20 55%, #121316 100%)" }}
     >
       {/* Key light from the front-left, the angle product photos use. */}
       <directionalLight
@@ -122,7 +122,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
         )}
       </group>
 
-      <ContactShadows position={[0, -4.6, -18]} opacity={0.62} scale={340} blur={2.2} far={50} />
+      <ContactShadows position={[0, -4.6, -18]} opacity={0.5} scale={260} blur={2.6} far={30} />
       <OrbitControls makeDefault enablePan enabled={!focusedMove} target={[0, 0, -18]}
         minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />
     </Canvas>

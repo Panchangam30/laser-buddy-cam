@@ -16,14 +16,14 @@
 .site-footer-meta { max-width: 470px; text-align: right; }
 .site-footer-meta > span { display: block; }
 .site-footer-meta nav { display: flex; justify-content: flex-end; gap: 14px; margin-top: 8px; }
-.site-footer-meta a { color: #aeb1b8 !important; text-decoration: none !important; }
+.site-footer-meta a { color: #474a51 !important; text-decoration: none !important; }
 .site-footer-meta a:hover { color: var(--ink) !important; }
 
 .site-footer.compact {
   position: absolute; z-index: 6; right: 14px; bottom: 17px; margin: 0;
   align-items: center; max-width: 610px; padding: 7px 9px;
   border: 1px solid var(--rule); border-radius: var(--r-pill);
-  background: rgba(22,24,27,.8); backdrop-filter: blur(16px);
+  background: rgba(251, 251, 252,.8); backdrop-filter: blur(16px);
 }
 .site-footer.compact .site-footer-project { flex-direction: row; align-items: center; }
 .site-footer.compact .site-footer-live { padding: 6px 8px; }

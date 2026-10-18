@@ -19,9 +19,11 @@
 
 const int PAN_PIN = 9, TILT_PIN = 10, LASER_PIN = 7;
 
-// Limits keep the servos from hitting the frame
+// Limits keep the servos from hitting the frame. Tilt uses the servo's full
+// travel so the beam can reach the near edge of the desk; if your bracket hits
+// something at one end, bring that end in a few degrees (and match vision/laser.py).
 const int PAN_MIN = 10,  PAN_MAX = 170;
-const int TILT_MIN = 5, TILT_MAX = 160;
+const int TILT_MIN = 0, TILT_MAX = 180;
 const unsigned long LASER_TIMEOUT_MS = 15000;   // laser turns itself off after 15 s idle
 
 Servo panServo, tiltServo;
