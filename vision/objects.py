@@ -272,6 +272,14 @@ def _match_score(o: "SceneObject", d: dict) -> float:
     return score
 
 
+def _proximity(a, b) -> tuple[float, float]:
+    """(centre distance in units of the boxes' mean diagonal, area ratio a/b)."""
+    ax, ay, aw, ah = a; bx, by, bw, bh = b
+    dist = float(np.hypot(ax + aw / 2 - bx - bw / 2, ay + ah / 2 - by - bh / 2))
+    diag = (float(np.hypot(aw, ah)) + float(np.hypot(bw, bh))) / 2
+    return dist / max(1.0, diag), (aw * ah) / max(1.0, bw * bh)
+
+
 def _conf_word(c: float) -> str:
     return "high" if c >= 0.5 else "medium" if c >= 0.25 else "low"
 
@@ -419,13 +427,27 @@ class ObjectScene:
             self._done.notify_all()
 
     def _merge_llm(self, dets: list[dict]) -> None:
-        """Put the language model's names and details onto tracked objects."""
+        """Put the language model's names and details onto tracked objects.
+
+        The model's boxes can be the right size but shifted by most of their
+        own width, and YOLO often has the right box under the wrong name (an
+        Arduino tracked as "book"). Matching them to each other matters more
+        than either alone: the tracked box is what the laser can hit, the name
+        is what the user says. So tracked objects are tried first -- on strong
+        evidence, then by proximity -- and only a name with no tracked object
+        anywhere near it becomes a free-floating, untracked guess.
+        """
         now = time.time()
         claimed: set[str] = set()
-        new_names = []
-        for d in dets:
+        matched: dict[int, SceneObject] = {}
+        tracked = [o for o in self.objects if o.tracking]
+
+        # 1. Strong evidence, tracked objects only. An untracked guess from an
+        #    earlier look must not compete here: it carries the same name, so
+        #    it would win every time and the bad box would never be corrected.
+        for i, d in enumerate(dets):
             best, best_score = None, 0.3
-            for o in self.objects:
+            for o in tracked:
                 if o.id in claimed:
                     continue
                 score = _match_score(o, d)
@@ -433,17 +455,49 @@ class ObjectScene:
                     best, best_score = o, score
             if best is not None:
                 claimed.add(best.id)
-                best.label, best.detail = d["label"], d["detail"]
-                if best.source == "llm":
-                    best.box, best.confirmed = d["box"], now
-            else:
-                o = SceneObject(self._new_id(), d["label"], d["box"], "llm")
-                o.detail, o.confidence = d["detail"], d["confidence"]
-                self.objects.append(o)
+                matched[i] = best
+
+        # 2. Proximity: a tracked object still showing YOLO's own class name,
+        #    of similar size, nearest within about one box diagonal.
+        for i, d in enumerate(dets):
+            if i in matched:
+                continue
+            best, best_near = None, 1.25
+            for o in tracked:
+                if o.id in claimed or o.label != o.cls:
+                    continue
+                near, ratio = _proximity(o.box, d["box"])
+                if 1 / 3 <= ratio <= 3 and near < best_near:
+                    best, best_near = o, near
+            if best is not None:
+                claimed.add(best.id)
+                matched[i] = best
+
+        new_names = []
+        for i, d in enumerate(dets):
+            o = matched.get(i)
+            if o is None:
+                # 3. Nothing tracked fits: refresh an earlier guess of the same
+                #    name, or start a new one.
+                o = next((x for x in self.objects if x.source == "llm" and x.id not in claimed
+                          and x.label.lower() == d["label"].lower()), None)
+                if o is None:
+                    o = SceneObject(self._new_id(), d["label"], d["box"], "llm")
+                    self.objects.append(o)
+                o.box, o.confirmed = d["box"], now
+                o.confidence = d["confidence"]
                 claimed.add(o.id)
+            o.label, o.detail = d["label"], d["detail"]
             new_names.append(d["label"])
             # The bare noun as well: "yellow pencil" -> "pencil".
             new_names.append(d["label"].split()[-1])
+
+        # A name now on a tracked object retires any untracked guess of it, or
+        # "point at the Arduino" can still pick the guess.
+        on_tracked = {o.label.lower() for o in matched.values() if o.tracking}
+        self.objects = [o for o in self.objects
+                        if not (o.source == "llm" and not o.tracking
+                                and o.id not in claimed and o.label.lower() in on_tracked)]
         if self.detector.add_names(new_names):
             pass
 
@@ -504,6 +558,30 @@ class ObjectScene:
                 if score > best_score:
                     best, best_score = o, score
             return best if best_score >= 0.5 else None
+
+    def locate(self, pt: tuple[float, float]) -> str:
+        """A spot in the picture said the way a person would: what it is on or next to.
+
+        For the laser dot, which the object list never contains -- it is a few
+        red pixels, not a thing YOLO has a class for.
+        """
+        w, h = self.size
+        where = _where(pt[0] / max(1, w), pt[1] / max(1, h)) if w else ""
+        with self._lock:
+            objs = [o for o in self.objects if o.tracking] or list(self.objects)
+            hits = [o for o in objs if _inside(pt, o.box, slack=0.0)]
+            if hits:
+                # Smallest box wins: a dot on a phone lying on a book is on the phone.
+                o = min(hits, key=lambda o: o.box[2] * o.box[3])
+                return f"on the {o.label} ({o.id})" + (f", {where} of the picture" if where else "")
+            if not objs:
+                return f"{where} of the picture" if where else "in the picture"
+            o = min(objs, key=lambda o: float(np.hypot(pt[0] - o.centre[0], pt[1] - o.centre[1])))
+            dx, dy = pt[0] - o.centre[0], pt[1] - o.centre[1]
+            # Image down is towards the camera, which is "in front of" from the user's seat.
+            side = (("right of" if dx > 0 else "left of") if abs(dx) >= abs(dy)
+                    else ("in front of" if dy > 0 else "behind"))
+            return (f"{where} of the picture, " if where else "") + f"just {side} the {o.label} ({o.id})"
 
     def annotate(self, frame: np.ndarray) -> np.ndarray:
         with self._lock:
@@ -641,7 +719,10 @@ def aim_closed_loop(link, aimer: pixelcal.HomographyAimer, frame_after,
     eye = pixelcal.Eye(frame_after, link)
     miss = None
     seen = False
-    for n in range(AIM_ITERATIONS):
+    dot = None
+    # One more look than corrections: the last move gets measured too, so the
+    # miss reported is where the dot ended up, not where it was a move ago.
+    for n in range(AIM_ITERATIONS + 1):
         if target_now is not None:
             tu, tv = target_now() or (tu, tv)
         # Tell the detector where the model expects the dot, to break ties with
@@ -649,11 +730,12 @@ def aim_closed_loop(link, aimer: pixelcal.HomographyAimer, frame_after,
         expect = aimer.pixel_for(link.pose.pan, link.pose.tilt) or (tu, tv)
         dot = eye.blink(near=expect, confirm=(n == 0))
         if dot is None:
+            miss = None          # lost it after a move: nothing true to report
             break
         seen = True
         aimer.add_sample(link.pose.pan, link.pose.tilt, *dot)
         miss = float(np.hypot(tu - dot[0], tv - dot[1]))
-        if miss <= AIM_TOLERANCE_PX:
+        if miss <= AIM_TOLERANCE_PX or n == AIM_ITERATIONS:
             break
         # Move by the difference between "aim for the target" and "aim for
         # where the dot actually is", through the model itself.
@@ -665,7 +747,8 @@ def aim_closed_loop(link, aimer: pixelcal.HomographyAimer, frame_after,
         link.move(*_clamp(link.pose.pan + dp, link.pose.tilt + dt))
     link.set_laser(True)
     out = {"ok": True, "pan": round(link.pose.pan, 1), "tilt": round(link.pose.tilt, 1),
-           "missPx": None if miss is None else round(miss), "seen": seen}
+           "missPx": None if miss is None else round(miss), "seen": seen,
+           "dot": None if dot is None else [round(dot[0]), round(dot[1])]}
     if not seen:
         # Say so. Claiming success on an uncorrected guess is what made a far-off
         # aim look like the system thought it was right.

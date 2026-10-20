@@ -96,6 +96,8 @@ export interface MoveResult {
   /** Plain-language explanation when a move was stopped by a limit. */
   limit?: string;
   laserOn?: boolean;
+  /** Where the camera saw the dot after the move, in words; "" if not seen. */
+  landed?: string;
 }
 
 /** Absolute aim. Either axis may be omitted to leave it where it is. */
@@ -116,7 +118,12 @@ export const pointAt = (hole: string): Promise<{ ok: boolean; error?: string; ho
 /** Aim at a capability-checked workspace target. */
 export const pointAtLocation = (
   target: WorkspaceLocation,
-): Promise<{ ok: boolean; error?: string; hole?: string }> => {
+): Promise<{
+  ok: boolean; error?: string; hole?: string;
+  /** Camera verdict; null when the aim was blind and could not be checked. */
+  onTarget?: boolean | null;
+  landed?: string;
+}> => {
   // Send the scoped target and its legacy coordinates together. Current vision
   // services use `target`; an already-running service from before the workspace
   // migration ignores it and falls back to `hole` or x/z instead of returning
@@ -132,6 +139,25 @@ export const pointAtLocation = (
 
 export interface LaserPrefs { invertPan: boolean; invertTilt: boolean; ok?: boolean; error?: string }
 export const setLaserPrefs = (prefs: Partial<LaserPrefs>): Promise<LaserPrefs> => call("laser/prefs", prefs);
+
+export interface FindLaserResult {
+  ok: boolean;
+  error?: string;
+  found?: boolean;
+  /** Camera pixel of the dot, when it was seen. */
+  dot?: [number, number] | null;
+  /** What it is on or next to, e.g. "on the phone (obj2), near left in the picture". */
+  where?: string;
+  /** One sentence for the assistant to work from. */
+  summary?: string;
+  why?: string;
+}
+
+/**
+ * Find the dot by blinking the laser and differencing, the same detector manual
+ * calibration uses. Leaves the beam on.
+ */
+export const findLaser = (): Promise<FindLaserResult> => call("laser/find", {});
 
 /* Manual calibration: aim by hand, mark the dot, repeat, finish. */
 export const manualDetect = (): Promise<{ ok: boolean; error?: string; dot: [number, number] | null; why?: string }> =>

@@ -47,6 +47,14 @@ KEEPALIVE_S = 9.0
 PAN_MIN, PAN_MAX = 10.0, 170.0
 TILT_MIN, TILT_MAX = 0.0, 180.0
 
+#: Gear slack to take up before settling on a position. Hobby servos stop a
+#: couple of degrees apart depending on which way they arrived, and at the
+#: grazing angle the beam meets the desk a degree of tilt is ~30 px of dot.
+#: Every move therefore ends approaching from below on both axes: the same
+#: angle then lands on the same spot whether it is a calibration sample or an
+#: aim, and small corrections that reverse direction are no longer swallowed.
+BACKLASH_DEG = 4.0
+
 
 @dataclass
 class Pose:
@@ -269,8 +277,18 @@ class LaserLink:
         """
         pan = max(PAN_MIN, min(PAN_MAX, float(pan)))
         tilt = max(TILT_MIN, min(TILT_MAX, float(tilt)))
+        cmd = "P" if smooth else "J"
         with self._lock:
-            reply = self._command(f"{'P' if smooth else 'J'} {pan:.1f} {tilt:.1f}")
+            # Going down on either axis: overshoot below first, then come up to
+            # it, so the final approach is always the same way (BACKLASH_DEG).
+            pre_p = max(PAN_MIN, pan - BACKLASH_DEG) if pan < self.pose.pan - 0.05 else pan
+            pre_t = max(TILT_MIN, tilt - BACKLASH_DEG) if tilt < self.pose.tilt - 0.05 else tilt
+            if (pre_p, pre_t) != (pan, tilt):
+                pre = self._command(f"{cmd} {pre_p:.1f} {pre_t:.1f}")
+                if not (pre and pre.startswith("OK")):
+                    return False
+                cmd = "P"                # the last few degrees: always gentle
+            reply = self._command(f"{cmd} {pan:.1f} {tilt:.1f}")
         self._parse_pose(reply)
         return bool(reply and reply.startswith("OK"))
 

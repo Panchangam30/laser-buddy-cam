@@ -76,6 +76,12 @@ export interface PointResult {
   /** False when the dot could not be seen, so the aim was not corrected. */
   seen?: boolean;
   warning?: string;
+  /** Set when the target's position is only the vision model's rough guess. */
+  note?: string;
+  /** The camera's verdict: was the dot seen inside the target after aiming. */
+  onTarget?: boolean;
+  /** Where the camera saw the dot end up, in words. */
+  landed?: string;
 }
 
 export const pointAtObject = (object: string) => call<PointResult>("objects/point", { object });

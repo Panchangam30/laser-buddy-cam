@@ -11,7 +11,7 @@ import { reconcile, guidanceText } from "./lib/guidance";
 import { PITCH, holePosition } from "./lib/breadboard";
 import {
   pointAt, pointAtLocation, moveLaser, nudgeLaser, setLaserPower, laserCentre,
-  laserConnect, laserStatus, laserOff, type Direction, type NudgeSize,
+  laserConnect, laserStatus, laserOff, findLaser, type Direction, type NudgeSize,
 } from "./lib/laser";
 import { anchorLocation, locationLabel } from "./lib/workspace";
 import type { Project } from "./lib/types";
@@ -111,6 +111,7 @@ export default function App() {
 
   // --- live voice ---
   const [voice, setVoice] = useState<RealtimeStatus>("idle");
+  const voiceStateRef = useRef<RealtimeStatus>("idle"); voiceStateRef.current = voice;
   const [voiceErr, setVoiceErr] = useState("");
   const [muted, setMuted] = useState(false);
   const [talk, setTalk] = useState<Utterance[]>([]);
@@ -363,7 +364,13 @@ export default function App() {
     const tick = async () => {
       if (stopped) return;
       const grabbedAt = Date.now() / 1000;
-      const frame = !inFlight && !document.hidden ? grabRef.current?.() : null;
+      // A background tab normally sends nothing. But the voice keeps talking
+      // with the window hidden -- and on macOS, Chrome counts a window merely
+      // covered by another app as hidden -- so while a call is live or the
+      // laser is aiming, the camera checks still need their frames.
+      const wanted = !document.hidden || fast
+        || voiceStateRef.current === "live" || voiceStateRef.current === "connecting";
+      const frame = !inFlight && wanted ? grabRef.current?.() : null;
       if (frame) {
         inFlight = true;
         try {
@@ -383,7 +390,15 @@ export default function App() {
       // While aiming/calibrating, frames go back to back: each laser blink waits
       // for a fresh picture, so frame rate is directly how fast pointing is.
       const wait = fast ? 0 : OBJECT_INTERVAL_MS;
-      if (!stopped) timer = window.setTimeout(tick, wait + Math.min(failures, 5) * 1500);
+      if (stopped) return;
+      if (fast && frame && !failures) {
+        // Straight on, not through setTimeout: a hidden page's timers run at
+        // most once a second, which would starve every blink. The round trip
+        // just made paces this, so it cannot spin.
+        void Promise.resolve().then(tick);
+        return;
+      }
+      timer = window.setTimeout(tick, wait + Math.min(failures, 5) * 1500);
     };
     timer = window.setTimeout(tick, 500);
     return () => { stopped = true; window.clearTimeout(timer); };
@@ -453,11 +468,18 @@ export default function App() {
         const r = name === "point_at_object" ? await pointAtObject(what) : await followObject(what);
         if (!r.ok) return `I could not: ${r.error}`;
         if (name === "follow_object") return `Following the ${r.label}.`;
-        if (r.seen === false) {
+        const note = r.note ? ` ${r.note}` : "";
+        if (r.seen === false || !r.landed) {
           return `I aimed at the ${r.label} but could not see the dot to check it, so it may be off. `
-            + (r.warning ?? "") + " Suggest recalibrating if it is far off.";
+            + (r.warning ?? "") + " Suggest recalibrating if it is far off." + note;
         }
-        return `The laser is on the ${r.label}${r.missPx != null ? `, about ${r.missPx} pixels from its centre` : ""}.`;
+        // Say what the camera saw, not what was intended: the model repeats
+        // whatever this says as fact.
+        if (r.onTarget === false) {
+          return `MISSED: I aimed at the ${r.label}, but the camera shows the dot ${r.landed}, `
+            + `not on it. Say so, and offer to try again or nudge it.${note}`;
+        }
+        return `Camera check: the dot is ${r.landed}${r.missPx != null ? `, about ${r.missPx} pixels from the ${r.label}'s centre` : ""}.${note}`;
       }
       case "stop_following": {
         await unfollowObject();
@@ -495,7 +517,7 @@ export default function App() {
           const r = await nudgeLaser(dir, amount);
           if (!r.ok) return `I could not move it: ${r.error}`;
           return `Moved ${dir}${r.atLimit ? `, but it hit a limit: ${r.limit ?? "that axis is at its stop"}` : ""}.`
-            + ` Pan ${r.pan}, tilt ${r.tilt}.`;
+            + ` Pan ${r.pan}, tilt ${r.tilt}.` + landedText(r.landed);
         }
         const pan = args.pan === undefined ? undefined : Number(args.pan);
         const tilt = args.tilt === undefined ? undefined : Number(args.tilt);
@@ -503,7 +525,7 @@ export default function App() {
           return "Tell me a direction, or a pan and tilt angle.";
         }
         const r = await moveLaser(pan, tilt);
-        return r.ok ? `Now at pan ${r.pan}, tilt ${r.tilt}.`
+        return r.ok ? `Now at pan ${r.pan}, tilt ${r.tilt}.` + landedText(r.landed)
                     : `I could not move it: ${r.error}`;
       }
       case "laser_power": {
@@ -513,6 +535,17 @@ export default function App() {
         const r = await setLaserPower(on);
         return r.ok ? `Laser ${on ? "on" : "off"}.`
                     : `I could not switch it: ${r.error}`;
+      }
+      case "find_laser": {
+        const ready = await ensureLaser();
+        if (ready) return ready;
+        try {
+          const r = await findLaser();
+          return r.ok ? r.summary ?? "I could not tell where the dot is."
+                      : `I could not look for the dot: ${r.error}`;
+        } catch (e) {
+          return `I could not look for the dot: ${e instanceof Error ? e.message : e}`;
+        }
       }
       case "centre_laser": {
         const ready = await ensureLaser();
@@ -535,10 +568,15 @@ export default function App() {
         if (!target) return "There is nothing to point at yet.";
         try {
           const r = await pointAtLocation(target);
-          const targetName = locationLabel(target);
-          return r.ok
-            ? `The laser is now pointing at ${r.hole ?? targetName}.`
-            : `I could not point there: ${r.error}`;
+          const targetName = r.hole ?? locationLabel(target);
+          if (!r.ok) return `I could not point there: ${r.error}`;
+          if (r.onTarget === true) return `Camera check: the dot is on ${targetName}.`;
+          if (r.onTarget === false) {
+            return `MISSED: I aimed at ${targetName}, but the camera shows the dot `
+              + `${r.landed || "somewhere I could not see"}. Say so rather than claiming it is there.`;
+          }
+          return `Aimed at ${targetName} from calibration only, without a camera check, so it may be off.`
+            + landedText(r.landed);
         } catch (e) {
           return `I could not point there: ${e instanceof Error ? e.message : e}`;
         }
@@ -558,7 +596,15 @@ export default function App() {
           // to send the photo through.
           const s = await detectObjects(frame).catch(() => null);
           if (s) setScene(s);
-          return s ? `Looking through the camera: ${s.summary}` : "I could not look.";
+          // The object list has no idea the laser dot exists. When the beam is
+          // already on, find it the way calibration does and say where it is;
+          // when it is off, leave it off -- a look should not switch it on.
+          const laser = await laserStatus().catch(() => null);
+          const dot = laser?.connected && laser.laserOn
+            ? await findLaser().catch(() => null) : null;
+          const dotText = dot?.ok && dot.summary ? ` ${dot.summary}` : "";
+          return s ? `Looking through the camera: ${s.summary}${dotText}`
+                   : dotText ? dotText.trim() : "I could not look.";
         }
         sessionRef.current?.sendImage(frame, "This is what the camera sees right now.");
         return "Photo taken and added to the conversation.";
@@ -572,6 +618,13 @@ export default function App() {
       default:
         return `Unknown tool ${name}.`;
     }
+  }
+
+  /** The camera's account of where a move left the dot, for tool replies. */
+  function landedText(landed?: string): string {
+    if (landed === undefined) return "";
+    return landed ? ` Camera check: the dot is now ${landed}.`
+                  : " I could not see the dot in the camera after the move.";
   }
 
   /**

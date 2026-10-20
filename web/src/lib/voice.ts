@@ -128,6 +128,16 @@ export const TOOLS = [
   },
   {
     type: "function",
+    name: "find_laser",
+    description: "Find where the laser dot is right now and what it is on or "
+      + "next to. The camera's object list and photos do not reliably show the "
+      + "dot, so use this whenever the student asks where the laser is "
+      + "pointing, whether it is on something, or says they cannot see it. It "
+      + "blinks the beam to find it and leaves it on.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    type: "function",
     name: "centre_laser",
     description: "Return the head to the middle of its travel and switch the "
       + "beam off. Use this when the student says centre it, reset it, or stop.",
@@ -151,7 +161,7 @@ export const TOOLS = [
 
 /** Laser tools shared by both modes. */
 const LASER_TOOLS = TOOLS.filter((t) =>
-  ["move_laser", "laser_power", "centre_laser"].includes(t.name));
+  ["move_laser", "laser_power", "find_laser", "centre_laser"].includes(t.name));
 
 /** Tools for object mode: anything on the desk, no breadboard. */
 export const OBJECT_TOOLS = [
@@ -207,8 +217,13 @@ export const OBJECT_TOOLS = [
 ];
 
 /** Everything the assistant can do: desk objects, the build, and the laser. */
+// Object mode's laser tools come from TOOLS too, so anything TOOLS already has
+// is dropped here. A name declared twice makes xAI's realtime server fail every
+// response with a bare "internal_error", so this filters by name rather than by
+// a hand-kept list that silently goes stale when a laser tool is added.
 export const ALL_TOOLS = [
-  ...OBJECT_TOOLS.filter((t) => !["look_closely", "move_laser", "laser_power", "centre_laser"].includes(t.name)),
+  ...OBJECT_TOOLS.filter((t) => t.name !== "look_closely"
+    && !TOOLS.some((u) => u.name === t.name)),
   ...TOOLS,
 ];
 
@@ -247,7 +262,13 @@ photo, and never guess text you cannot read.
 THE LASER. To show where something is, point at it rather than describing it:
 point_at_object for an object, point_at for a breadboard hole. "Follow" or
 "track" an object is follow_object. "Left a bit", "up", "centre it" are
-move_laser. Move first, then speak, so beam and words arrive together. If a tool
+move_laser. Move first, then speak, so beam and words arrive together. The
+desk list never includes the laser dot, so when asked where the laser is
+pointing or what it is on, call find_laser instead of guessing. Only say the
+beam is on something when a tool's "Camera check" says the dot is on it; if a
+result says MISSED or that it could not check, tell the user honestly. "The
+board" with no breadboard in view usually means the Arduino: use
+point_at_object for it, never point_at (point_at is breadboard holes only). If a tool
 says the laser is not calibrated, tell them to press Calibrate in the Laser
 panel. Never aim at a person's face; refuse if asked.
 

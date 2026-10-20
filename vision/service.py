@@ -179,7 +179,49 @@ class VisionEngine:
             aimer.save()
             with self._lock:
                 self._aimed_hole = obj.label
-        return {**r, "object": obj.id, "label": obj.label}
+        note = self._rough_note(obj)
+        dot = r.get("dot")
+        live = self.scene.get(oid) or obj
+        # The verdict is the camera's, not the aim's: is the dot inside the box?
+        on = dot is not None and objects._inside(dot, live.box, slack=0.1)
+        return {**r, "object": obj.id, "label": obj.label, "onTarget": on,
+                "landed": self.scene.locate(dot) if dot else "",
+                **({"note": note} if note else {})}
+
+    def _where_dot(self) -> str:
+        """One blink: where the dot really is, in words, or "" if not seen.
+
+        Reported after moves that do not look for themselves, so the assistant
+        says where the beam is from the camera rather than from what it meant
+        to do.
+        """
+        if (self._frame is None or time.time() - self._frame_at > 3.0
+                or self.pixel_cal.running or self.calibrator.running):
+            return ""
+        aimer, _ = self._pixel_aimer()
+        near = aimer.pixel_for(self.laser.pose.pan, self.laser.pose.tilt) if aimer else None
+        self._aiming += 1
+        try:
+            dot = pixelcal.Eye(self.frame_after, self.laser).blink(near=near)
+        finally:
+            self._aiming -= 1
+        return self.scene.locate(dot) if dot else ""
+
+    def _rough_note(self, obj) -> str:
+        """Say so when the target's position is only the vision model's guess.
+
+        Objects the tracker cannot see keep the box the vision model drew, and
+        those are often off by the object's own size -- so the laser lands
+        dead on a spot the object is not at, and looks like bad aiming.
+        """
+        if obj.tracking:
+            return ""
+        note = (f"The {obj.label}'s position is only a rough guess from the vision model "
+                "-- the tracker cannot see it -- so the beam may land beside it.")
+        frame = self._frame
+        if frame is not None and float(frame.mean()) < 45:
+            note += " The picture is very dark; more light on the desk lets the tracker lock on."
+        return note
 
     def follow_object(self, query: str) -> dict:
         problem = self._ready()
@@ -321,7 +363,20 @@ class VisionEngine:
                     with self._lock:
                         self._aimed_at = (x, z)
                         self._aimed_hole = hole
-                    return {**r, "hole": hole}
+                    dot = r.get("dot")
+                    return {**r, "hole": hole,
+                            "onTarget": r.get("missPx") is not None
+                                        and r["missPx"] <= 2 * objects.AIM_TOLERANCE_PX,
+                            "landed": self.scene.locate(dot) if dot else ""}
+        if isinstance(pose, bd.NoBoard):
+            # The fallback below assumes the board has not moved since it was
+            # calibrated, and nothing checks that. Aiming blind and reporting
+            # success is how the assistant came to say the beam was on the board
+            # when it was nowhere near it.
+            return {"ok": False, "error":
+                    "I cannot see the breadboard in the camera, so I do not know where "
+                    f"{hole or 'that hole'} is. If you meant the Arduino or another "
+                    "object, point at the object instead."}
         aimer = self.calibrator.aimer
         if not aimer.ready:
             return {"ok": False, "error": "The laser has not been calibrated yet."}
@@ -340,7 +395,8 @@ class VisionEngine:
             self._aimed_at = (x, z)
             self._aimed_hole = hole
         return {"ok": True, "hole": hole, "pan": round(angles[0], 1),
-                "tilt": round(angles[1], 1), "accuracy": aimer.quality()}
+                "tilt": round(angles[1], 1), "accuracy": aimer.quality(),
+                "onTarget": None, "landed": self._where_dot()}
 
     def point_at_hole(self, ref: str) -> dict:
         xz = g.hole_xz(ref)
@@ -420,6 +476,40 @@ class VisionEngine:
                 "why": pixelcal.LAST.get("why", ""),
                 "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
 
+    def find_laser(self) -> dict:
+        """Where the laser dot is right now, for the voice assistant.
+
+        The same blink-and-confirm detector manual calibration uses, because
+        nothing else can see the dot: the object tracker has no class for it,
+        and Grok's voice cannot take a picture. Switches the beam on to look and
+        leaves it on -- whoever asked wants to see where it is.
+        """
+        problem = self._ready()
+        if problem:
+            return {"ok": False, "error": problem}
+        if self._frame is None or time.time() - self._frame_at > 3.0:
+            return {"ok": False, "error": "No recent camera frames, so I cannot look for the "
+                    "dot. The app's browser tab has stopped sending them -- keep it open with its "
+                    "window visible."}
+        if self.pixel_cal.running or self.calibrator.running:
+            return {"ok": False, "error": "Calibration is running; it is using the laser."}
+        self._aiming += 1
+        try:
+            dot = pixelcal.Eye(self.frame_after, self.laser).blink(confirm=True)
+        finally:
+            self._aiming -= 1
+        why = pixelcal.LAST.get("why", "")
+        pose = {"pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
+        if dot is None:
+            return {"ok": True, "found": False, "dot": None, "why": why, **pose,
+                    "summary": f"The laser is on but I cannot see its dot in the camera ({why}). "
+                               "It is probably pointing outside the camera's view, or onto "
+                               "something dark or shiny."}
+        where = self.scene.locate(dot)
+        return {"ok": True, "found": True, "dot": [round(dot[0]), round(dot[1])],
+                "where": where, "why": why, **pose,
+                "summary": f"The laser dot is {where}."}
+
     def manual_add(self, u=None, v=None) -> dict:
         problem = self._ready()
         if problem:
@@ -477,7 +567,8 @@ class VisionEngine:
         t = self.laser.pose.tilt if tilt is None else float(tilt)
         if not self.laser.move(p, t):
             return {"ok": False, "error": self.laser.error or "The head did not answer."}
-        return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt}
+        return {"ok": True, "pan": self.laser.pose.pan, "tilt": self.laser.pose.tilt,
+                **({"landed": self._where_dot()} if self.laser.laser_on else {})}
 
     def nudge(self, direction: str, amount: str = "small") -> dict:
         """Relative move in a spoken direction."""
@@ -512,7 +603,8 @@ class VisionEngine:
         elif stuck == "pan":
             limit = f"Pan stopped at {got_p:.0f} degrees (its limit)."
         return {"ok": True, "pan": got_p, "tilt": got_t,
-                "movedBy": step, "atLimit": bool(stuck), "limit": limit}
+                "movedBy": step, "atLimit": bool(stuck), "limit": limit,
+                **({"landed": self._where_dot()} if self.laser.laser_on else {})}
 
     def laser_power(self, on: bool) -> dict:
         problem = self._ready()
@@ -915,6 +1007,8 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.set_prefs(body))
             if self.path == "/vision/laser/manual/detect":
                 return self._json(200, engine.manual_detect())
+            if self.path == "/vision/laser/find":
+                return self._json(200, engine.find_laser())
             if self.path == "/vision/laser/manual/add":
                 u, v = body.get("u"), body.get("v")
                 ok = isinstance(u, (int, float)) and isinstance(v, (int, float))

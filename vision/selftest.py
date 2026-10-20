@@ -102,6 +102,9 @@ def run_aiming() -> int:
     # currently aiming it, which is exactly what the real loop sees.
     cal = aim.Calibrator()
     cal.aimer = aim.Aimer()                       # ignore any cached calibration
+    # A synthetic rig's calibration must never land in the real file: the
+    # service loads it and aims the actual head with it, believing it perfect.
+    cal.aimer.save = lambda *_a, **_k: None
     cal.run(head, lambda: head.render(base, pose), lambda _f: pose)
 
     if cal.error:
