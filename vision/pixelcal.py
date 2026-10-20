@@ -399,7 +399,8 @@ class Eye:
         off = self.settled()
         self.link.set_laser(True)
         if on is None or off is None:
-            LAST.update(why="no camera frames arrived")
+            LAST.update(why="no camera frames arrived -- the app's browser tab stopped "
+                            "sending them; keep it open and its window visible")
             return None
         return find_dot(on, off, near)
 

@@ -61,6 +61,8 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
  *  calibration needs to know which pictures show the beam on and which off. */
 export const analyseObjects = (image: string, capturedAt?: number) =>
   call<Scene>("objects/analyze", { image, capturedAt });
+/** The tracker's current view, when the service reads the camera itself. */
+export const getScene = () => call<Scene>("objects");
 /** Identify right now and wait for the answer -- for "what do you see?". */
 export const detectObjects = (image?: string | null) =>
   call<Scene>("objects/detect", image ? { image } : {});

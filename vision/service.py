@@ -43,6 +43,7 @@ import cv2
 import numpy as np
 
 from . import board as bd
+from . import camera as cam
 from . import geometry as g, label, objects, pixelcal, world, workspace as ws
 from .aim import Calibrator, find_dot
 from .laser import LaserLink, find_port
@@ -106,6 +107,102 @@ class VisionEngine:
         self._aiming = 0
         self.pixel_cal = objects.PixelCalibrator()
         self.follower = objects.Follower()
+        #: The service's own webcam, when it has one (see camera.py). While it
+        #: runs, frames uploaded by a browser are ignored: they are older and
+        #: less precisely timed, and mixing them in would confuse laser checks.
+        self.camera: cam.Camera | None = None
+
+    # ----------------------------------------------------------------- camera
+
+    #: How far ahead of "now" a frame must be stamped to be sure it shows the
+    #: laser as just set. Browser frames carry a guessed timestamp and need a
+    #: wide margin; the service's own are stamped when read.
+    BROWSER_LATENCY_S = 0.18
+    CAMERA_LATENCY_S = 0.10
+    #: The tracker does not need every camera frame; this caps its CPU.
+    SCENE_HZ = 10.0
+
+    @property
+    def owns_camera(self) -> bool:
+        return self.camera is not None and self.camera.running
+
+    CAMERA_PREFS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "camera_prefs.json")
+
+    def saved_camera(self) -> int | None:
+        """The camera chosen last time; None means leave it to the browser."""
+        try:
+            with open(self.CAMERA_PREFS) as fh:
+                idx = json.load(fh).get("index", 0)
+            return None if idx is None else int(idx)
+        except (OSError, ValueError, TypeError):
+            return 0
+
+    def _save_camera(self, index: int | None) -> None:
+        try:
+            with open(self.CAMERA_PREFS, "w") as fh:
+                json.dump({"index": index}, fh)
+        except OSError:
+            pass
+
+    def use_camera(self, index: int) -> None:
+        """Read frames from this webcam ourselves instead of waiting for uploads."""
+        if self.camera is not None:
+            self.camera.select(index)
+            return
+        self.camera = cam.Camera(index, on_frame=self._ingest)
+        self.camera.start()
+        if not getattr(self, "_scene_thread", None):
+            self._scene_thread = threading.Thread(target=self._scene_loop, name="scene", daemon=True)
+            self._scene_thread.start()
+
+    def set_camera(self, body: dict) -> dict:
+        """From the camera panel: next camera, a given one, or back to the browser."""
+        if body.get("browser"):
+            if self.camera is not None:
+                self.camera.stop()
+                self.camera = None
+            self._save_camera(None)
+            return self.camera_status()
+        if body.get("next") and self.camera is not None:
+            self.camera.select_next()
+        else:
+            idx = body.get("index")
+            self.use_camera(int(idx) if isinstance(idx, (int, float)) else
+                            (self.camera.index if self.camera else 0))
+        # Remembered once the thread has settled on one; good enough to save now
+        # for an explicit index, and saved again by camera_status for "next".
+        self._camera_save_pending = True
+        return {"ok": True, "switching": True}
+
+    def _ingest(self, frame: np.ndarray, captured_at: float) -> None:
+        """A camera frame: what every laser check and calibration reads."""
+        with self._lock:
+            self._frame = frame
+            self._frame_at = time.time()
+            self._frame_cap = captured_at
+        pixelcal.FRAME_LATENCY_S = self.CAMERA_LATENCY_S
+
+    def _scene_loop(self) -> None:
+        """Keep the object tracker on the newest frame, independent of any browser."""
+        seq = 0
+        while True:
+            camera = self.camera
+            if camera is None:                       # handed back to the browser
+                time.sleep(0.5)
+                seq = 0
+                continue
+            frame, _t, new = camera.wait_newer(seq, timeout=1.0)
+            if new < seq:                            # switched camera: counts restart
+                seq = 0
+            if frame is None or new == seq:
+                continue
+            seq = new
+            started = time.time()
+            try:
+                self.scene.update(frame)
+            except Exception as e:                   # keep tracking alive
+                self.scene.error = f"tracker failed: {e}"
+            time.sleep(max(0.0, 1.0 / self.SCENE_HZ - (time.time() - started)))
 
     # ------------------------------------------------------------ object mode
 
@@ -124,6 +221,7 @@ class VisionEngine:
             # on or off. Same machine, same clock; reject nonsense anyway.
             ok = captured_at is not None and now - 5 < captured_at <= now + 0.05
             self._frame_cap = captured_at if ok else now - self.UNSTAMPED_AGE_S
+        pixelcal.FRAME_LATENCY_S = self.BROWSER_LATENCY_S
         snap = self.scene.update(frame)
         # While the laser is being aimed or calibrated, ask the browser for
         # frames as fast as it can send them: every blink waits for fresh ones.
@@ -255,12 +353,15 @@ class VisionEngine:
 
     # ------------------------------------------------------------------ analyse
 
-    def analyse(self, frame: np.ndarray) -> dict:
+    def analyse(self, frame: np.ndarray, ingest: bool = True) -> dict:
+        """Board mode. `ingest=False` for a camera frame, which is already the
+        current frame with a better timestamp than this would give it."""
         with self._lock:
             self._frames += 1
-            self._frame = frame
-            self._frame_at = time.time()
-            self._frame_cap = self._frame_at - self.UNSTAMPED_AGE_S
+            if ingest:
+                self._frame = frame
+                self._frame_at = time.time()
+                self._frame_cap = self._frame_at - self.UNSTAMPED_AGE_S
             pose = self.workspace_runtime.locate(frame, flipped=self.flipped)
             self._pose = pose
 
@@ -743,7 +844,17 @@ class VisionEngine:
                 "workspace": self.workspace_runtime.descriptor.serialise(self._pose),
                 "boardFound": not isinstance(self._pose, bd.NoBoard),
                 "pxPerMm": bd.PX_PER_MM,
+                "camera": self.camera_status(),
             }
+
+    def camera_status(self) -> dict:
+        if self.camera is None:
+            return {"owned": False, "browser": True, "error": ""}
+        st = self.camera.status()
+        if st["owned"] and getattr(self, "_camera_save_pending", False):
+            self._camera_save_pending = False
+            self._save_camera(self.camera.index)
+        return st
 
     # -------------------------------------------------------------------- debug
 
@@ -858,6 +969,30 @@ def make_handler(engine: VisionEngine):
         def do_OPTIONS(self) -> None:          # noqa: N802
             self._send(204, b"", "text/plain")
 
+        def _stream(self) -> None:
+            """The camera as MJPEG, for the web page to show. Runs until the viewer leaves."""
+            if not engine.owns_camera:
+                return self._json(404, {"error": "the service is not reading a camera"})
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            seq, gap = 0, 1.0 / cam.STREAM_FPS
+            try:
+                while engine.camera is not None:
+                    _f, _t, seq = engine.camera.wait_newer(seq, timeout=2.0)
+                    shot = engine.camera.jpeg()
+                    if shot is None:
+                        continue
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                     + str(len(shot[1])).encode() + b"\r\n\r\n" + shot[1] + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(gap)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass                                   # the viewer went away
+            self.close_connection = True
+
         def do_GET(self) -> None:              # noqa: N802
             path, _, query = self.path.partition("?")
             if path == "/vision/health":
@@ -870,6 +1005,15 @@ def make_handler(engine: VisionEngine):
                 return self._json(200, engine.take_remote())
             if path == "/vision/objects":
                 return self._json(200, engine.scene.snapshot())
+            if path == "/vision/camera":
+                return self._json(200, engine.camera_status())
+            if path == "/vision/frame.jpg":
+                shot = engine.camera.jpeg() if engine.owns_camera else None
+                if shot is None:
+                    return self._json(404, {"error": "the service is not reading a camera"})
+                return self._send(200, shot[1], "image/jpeg")
+            if path == "/vision/stream.mjpg":
+                return self._stream()
             if path == "/vision/laser/dot.jpg":
                 img = pixelcal.debug_image()
                 if img is None:
@@ -903,6 +1047,9 @@ def make_handler(engine: VisionEngine):
                 return self._json(400, {"error": "body was not JSON"})
 
             if self.path == "/vision/analyze":
+                if engine.owns_camera:
+                    frame, _t, _seq = engine.camera.latest()
+                    return self._json(200, engine.analyse(frame, ingest=False))
                 image = body.get("image")
                 if not isinstance(image, str) or not image:
                     return self._json(400, {"error": "no image supplied"})
@@ -911,6 +1058,14 @@ def make_handler(engine: VisionEngine):
                 except Exception as e:
                     return self._json(400, {"error": str(e)})
                 return self._json(200, engine.analyse(frame))
+
+            if self.path in ("/vision/objects/analyze", "/vision/objects/detect") and engine.owns_camera:
+                # The service's own frames are already flowing into the tracker.
+                if self.path.endswith("detect"):
+                    return self._json(200, engine.scene.detect_now(engine._frame))
+                snap = engine.scene.snapshot()
+                snap["fast"] = bool(engine._aiming or engine.pixel_cal.running)
+                return self._json(200, snap)
 
             if self.path in ("/vision/objects/analyze", "/vision/objects/detect"):
                 image = body.get("image")
@@ -955,6 +1110,9 @@ def make_handler(engine: VisionEngine):
                 if not cmd:
                     return self._json(400, {"error": "no command"})
                 return self._json(200, engine.push_remote(cmd, body.get("args")))
+
+            if self.path == "/vision/camera":
+                return self._json(200, engine.set_camera(body))
 
             if self.path == "/vision/laser/connect":
                 ok = engine.laser.connect(body.get("port") or None)
@@ -1062,6 +1220,9 @@ def serve(port: int, engine: VisionEngine) -> None:
             f"(and set VISION_URL to match)") from None
 
     print(f"vision service on http://127.0.0.1:{port}")
+    if engine.camera is not None:
+        print(f"  camera: reading webcam {engine.camera.index} itself "
+              f"(live view: http://127.0.0.1:{port}/vision/stream.mjpg)")
     print(f"  labelling: {'on' if engine.labelling and engine.api_key else 'off'}"
           f"   debug view: http://127.0.0.1:{port}/vision/debug.jpg")
     try:
@@ -1136,6 +1297,10 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=int(os.environ.get("VISION_PORT", "8788")))
     ap.add_argument("--camera", type=int, default=None,
                     help="run standalone on this camera index instead of serving")
+    ap.add_argument("--serve-camera", default=os.environ.get("VISION_CAMERA"),
+                    help="webcam index the service reads itself while serving (default: "
+                         "the one last chosen in the app, else 0; or VISION_CAMERA); "
+                         "'off' leaves the camera to the browser")
     ap.add_argument("--no-label", action="store_true",
                     help="locate parts but do not spend API calls identifying them")
     args = ap.parse_args()
@@ -1145,6 +1310,12 @@ def main() -> None:
     if args.camera is not None:
         standalone(args.camera, engine)
     else:
+        choice = args.serve_camera
+        if choice is None:
+            saved = engine.saved_camera()
+            choice = "off" if saved is None else str(saved)
+        if str(choice).lower() not in ("off", "none", "browser", ""):
+            engine.use_camera(int(choice))
         serve(args.port, engine)
 
 

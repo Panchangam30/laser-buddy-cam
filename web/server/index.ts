@@ -59,6 +59,27 @@ async function visionHealth(): Promise<string> {
  * origin: the camera frames are already flowing through here, and a second
  * origin would need its own CORS and its own failure mode in the UI.
  */
+/**
+ * The service's live camera view. Piped chunk by chunk: the general proxy below
+ * buffers a whole response, and this one never ends.
+ */
+app.get("/api/vision/stream.mjpg", async (req, res) => {
+  const ac = new AbortController();
+  req.on("close", () => ac.abort());
+  try {
+    const r = await fetch(`${VISION_URL}/vision/stream.mjpg`, { signal: ac.signal });
+    res.status(r.status);
+    res.setHeader("Content-Type", r.headers.get("Content-Type") ?? "multipart/x-mixed-replace; boundary=frame");
+    res.setHeader("Cache-Control", "no-store");
+    if (!r.body) return res.end();
+    for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) res.write(chunk);
+    res.end();
+  } catch {
+    if (!res.headersSent) res.status(503).json({ error: "the vision service is not streaming" });
+    else res.end();
+  }
+});
+
 app.use("/api/vision", async (req, res) => {
   const target = `${VISION_URL}/vision${req.url}`;
   try {

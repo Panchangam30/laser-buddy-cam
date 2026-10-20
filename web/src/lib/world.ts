@@ -111,11 +111,12 @@ export const EMPTY_WORLD: World = {
 };
 
 /** Send a frame to the vision service and get the updated map back. */
-export async function analyseFrame(imageDataUrl: string, signal?: AbortSignal): Promise<World> {
+/** With no image, the service analyses its own camera's newest frame. */
+export async function analyseFrame(imageDataUrl: string | null, signal?: AbortSignal): Promise<World> {
   const r = await fetch("/api/vision/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageDataUrl }),
+    body: JSON.stringify(imageDataUrl ? { image: imageDataUrl } : {}),
     signal,
   });
   const body = await r.json();

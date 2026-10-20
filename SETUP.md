@@ -155,8 +155,16 @@ and planning from a photo need the OpenAI key. Choose **Anything on the desk**
 for general object tracking instead.
 
 Keep the camera steady and use decent lighting. The board locator supports
-the supplied 830-point breadboard profile. The browser normally owns the camera,
-so do not open `identify.py` or a standalone Python camera window on the same
+the supplied 830-point breadboard profile.
+
+The vision service reads the webcam itself and the app shows its live stream,
+so the laser's camera checks keep working when the browser window is hidden or
+covered. macOS asks for camera permission for the app that started the service
+(your terminal or editor) the first time. If the preview shows the wrong
+camera, press **Switch camera** under it; the choice is remembered. **Use
+browser camera** hands the webcam back to the page instead (the older path),
+and `VISION_CAMERA=<index>` or `VISION_CAMERA=off` sets it from the command
+line. Do not open `identify.py` or a standalone Python camera window on the same
 webcam at the same time.
 
 ## 5. Optional laser rig

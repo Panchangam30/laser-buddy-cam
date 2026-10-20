@@ -7,6 +7,9 @@ import { LaserPanel } from "./ui/LaserPanel";
 import { MOCK_PLAN } from "./lib/mockPlan";
 import { requestGoalPlan, requestPlan, speak, health } from "./lib/api";
 import { analyseFrame, resetWorld, setOrientation, EMPTY_WORLD, type World } from "./lib/world";
+import {
+  browserCamera, cameraStatus, nextCamera, serviceCamera, type CameraSource,
+} from "./lib/camera";
 import { reconcile, guidanceText } from "./lib/guidance";
 import { PITCH, holePosition } from "./lib/breadboard";
 import {
@@ -39,7 +42,7 @@ import { ReplayPanel } from "./ui/ReplayPanel";
 import { DeskList } from "./ui/ObjectPanel";
 import { VoiceOrb } from "./ui/VoiceOrb";
 import {
-  analyseObjects, detectObjects, followObject, pointAtObject, unfollowObject,
+  analyseObjects, detectObjects, followObject, getScene, pointAtObject, unfollowObject,
   EMPTY_SCENE, type Scene as ObjectScene,
 } from "./lib/objects";
 import "./App.css";
@@ -118,6 +121,11 @@ export default function App() {
   const sessionRef = useRef<VoiceSession | null>(null);
   const voiceIdRef = useRef("");
   const grabRef = useRef<(() => string | null) | null>(null);
+  // Who reads the webcam. "service" means the vision service does, and the
+  // loops below only ask it for results instead of uploading frames.
+  const [camSource, setCamSource] = useState<CameraSource>("unknown");
+  const [camErr, setCamErr] = useState("");
+  const camSourceRef = useRef(camSource); camSourceRef.current = camSource;
   // Kept in refs so tool handlers always see current state, not a stale closure.
   const planRef = useRef(plan); planRef.current = plan;
   const stepRef = useRef(step); stepRef.current = step;
@@ -323,11 +331,13 @@ export default function App() {
 
     const tick = async () => {
       if (stopped) return;
-      const frame = !inFlight ? grabRef.current?.() : null;
-      if (frame) {
+      // With the service reading the camera, ask it to analyse its own frame.
+      const service = camSourceRef.current === "service";
+      const frame = !inFlight ? (service ? "" : grabRef.current?.()) : null;
+      if (frame != null && (service || frame)) {
         inFlight = true;
         try {
-          const observed = await analyseFrame(frame);
+          const observed = await analyseFrame(service ? null : frame);
           if (stopped) return;
           setWorld(observed);
           setVisionErr("");
@@ -350,6 +360,28 @@ export default function App() {
   }, [tracking, project.id]);
 
   /**
+   * Who owns the camera. Decided by the service, polled so that switching it in
+   * one place (or restarting the service) is picked up. A service that cannot
+   * be reached leaves the camera to this tab, so the preview still works.
+   */
+  useEffect(() => {
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const st = await cameraStatus();
+        if (stopped) return;
+        setCamSource(st.browser ? "browser" : "service");
+        setCamErr(st.owned ? "" : st.error ?? "");
+      } catch {
+        if (!stopped) setCamSource((s) => (s === "unknown" ? "browser" : s));
+      }
+    };
+    void poll();
+    const id = window.setInterval(poll, 3000);
+    return () => { stopped = true; window.clearInterval(id); };
+  }, []);
+
+  /**
    * Object tracking: always on while the camera is. Frames go to the object
    * tracker continuously (YOLO in the vision service), which is what lets the
    * assistant see the desk at all times and what the laser aims from. Paused
@@ -363,6 +395,22 @@ export default function App() {
     let timer: number;
     const tick = async () => {
       if (stopped) return;
+      if (camSourceRef.current === "service") {
+        // The service tracks its own frames; this only fetches the result for
+        // the boxes on screen, so nothing here can hold up the laser.
+        try {
+          const seen = await getScene();
+          if (stopped) return;
+          setScene(seen);
+          setSceneErr("");
+          failures = 0;
+        } catch (e) {
+          failures++;
+          setSceneErr(e instanceof Error ? e.message : String(e));
+        }
+        if (!stopped) timer = window.setTimeout(tick, 250 + Math.min(failures, 5) * 1500);
+        return;
+      }
       const grabbedAt = Date.now() / 1000;
       // A background tab normally sends nothing. But the voice keeps talking
       // with the window hidden -- and on macOS, Chrome counts a window merely
@@ -1110,7 +1158,11 @@ export default function App() {
           onMute={() => { const m = !muted; setMuted(m); sessionRef.current?.setMuted(m); }} />
 
         <CameraPanel floating onCapture={onCapture} busy={busy} scene={scene}
-          registerGrab={(fn) => { grabRef.current = fn; }} />
+          registerGrab={(fn) => { grabRef.current = fn; }}
+          source={camSource} serviceError={camErr}
+          onSwitchCamera={() => { void nextCamera(); }}
+          onUseBrowser={() => { void browserCamera().then(() => setCamSource("browser")); }}
+          onUseService={() => { void serviceCamera().then(() => setCamSource("service")); }} />
 
         <div className="stage-dock">
           <div className="instruction">

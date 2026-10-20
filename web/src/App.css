@@ -245,11 +245,13 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   position: relative; border-radius: var(--r-md); overflow: hidden;
   border: 1px solid var(--rule); background: var(--panel); height: 104px;
 }
-.camera-frame video {
+.camera-frame video, .camera-frame .cam-feed {
   width: 100%; height: 100%; object-fit: cover; display: block;
   opacity: 0; transition: opacity .3s ease;
 }
-.camera-frame[data-ready="true"] video { opacity: 1; }
+.camera-frame[data-ready="true"] video,
+.camera-frame[data-ready="true"] .cam-feed { opacity: 1; }
+.camera-source { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .camera-waiting {
   position: absolute; inset: 0; margin: 0; display: grid; place-items: center;
   color: var(--ink-faint); font-size: 12.5px;
@@ -933,7 +935,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   box-shadow: 0 12px 36px rgba(0, 0, 0, .45);
 }
 /* The whole frame, never cropped: what the scan sees is what is shown. */
-.camera-pip .camera-frame video { object-fit: contain; }
+.camera-pip .camera-frame video, .camera-pip .camera-frame .cam-feed { object-fit: contain; }
 .camera-pip .capture {
   margin-top: 10px; padding: 10px; background: #fff; color: var(--ink);
   border: 0; box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
