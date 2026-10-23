@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 
@@ -23,11 +23,24 @@ export function GlbModel({ url, fallback, selected, glow, recolor, position, chi
   position?: [number, number, number];
 }) {
   return (
-    <Suspense fallback={fallback}>
-      <Loaded url={url} selected={selected} glow={glow} recolor={recolor} position={position} />
-      {children}
-    </Suspense>
+    <MissingModel fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <Loaded url={url} selected={selected} glow={glow} recolor={recolor} position={position} />
+        {children}
+      </Suspense>
+    </MissingModel>
   );
+}
+
+/**
+ * If a model file fails to load (not deployed, offline), keep showing the
+ * hand-built part instead of letting the error take down the whole canvas.
+ */
+class MissingModel extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { console.warn("3D model failed to load; using the simple model.", error); }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
 function Loaded({ url, selected, glow, recolor, position }: {

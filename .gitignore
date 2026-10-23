@@ -48,6 +48,9 @@ calibration.json
 pixel_calibration.json
 pixel_homography.json
 models/
+# ...but not the 3D part models the web app ships, or the script that builds them.
+!web/public/models/
+!web/scripts/models/
 laser_prefs.json
 camera_prefs.json
 
