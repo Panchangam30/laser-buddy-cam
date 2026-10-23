@@ -64,7 +64,7 @@ export function BenchCompanion({ projectId }: { projectId: string }) {
   return <Dialog><DialogTrigger asChild><button className="project-tool" aria-label="Bench companion" title="Resistor decoder, LED calculator, and power checklist"><Wrench size={14} /><span>Bench tools</span></button></DialogTrigger>
     <DialogContent><header className="bench-header"><div><DialogTitle>Bench companion</DialogTitle><DialogDescription>Resistor values, LED sizing, and wiring checks.</DialogDescription></div></header>
       <Tabs defaultValue="resistor"><TabsList aria-label="Bench tools"><TabsTrigger value="resistor"><CircuitBoard size={16} />Resistor decoder</TabsTrigger><TabsTrigger value="led"><FlaskConical size={16} />LED calculator</TabsTrigger><TabsTrigger value="checks"><ShieldCheck size={16} />Power checklist</TabsTrigger></TabsList><TabsContent value="resistor"><ResistorDecoder /></TabsContent><TabsContent value="led"><LedCalculator /></TabsContent><TabsContent value="checks"><PowerChecklist key={projectId} projectId={projectId} /></TabsContent></Tabs>
-      <footer className="bench-footer"><span><i />Works without camera or AI setup</span><a href="/hub#challenges">Practice in the Fault Lab <ArrowUpRight size={14} /></a></footer>
+      <footer className="bench-footer"><span><i />Offline bench tools</span><a href="/hub#challenges">Practice in the Fault Lab <ArrowUpRight size={14} /></a></footer>
     </DialogContent>
   </Dialog>;
 }

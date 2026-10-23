@@ -16,7 +16,7 @@ export function GlbModel({ url, fallback, selected, glow, recolor, position, chi
   children?: ReactNode;
   fallback: ReactNode;
   selected?: boolean;
-  /** Materials that take the yellow selection rim. Omit for every non-metal. */
+  /** Materials that take the blue selection rim. Omit for every non-metal. */
   glow?: string[];
   /** Material name -> colour, for parts whose colour varies (an LED's lens). */
   recolor?: Record<string, string>;
@@ -65,7 +65,7 @@ function Loaded({ url, selected, glow, recolor, position }: {
       const own = mat.clone();
       own.userData.owned = true;
       if (colour) own.color.set(colour);
-      if (lit) { own.emissive.set("#ffcc00"); own.emissiveIntensity = 0.32; }
+      if (lit) { own.emissive.set("#2f6bd8"); own.emissiveIntensity = 0.32; }
       mesh.material = own;
     });
     return clone;

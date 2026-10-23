@@ -9,8 +9,8 @@ import "./remote.css";
  * on -- the segmented ring snaps into line, the inner ring closes, and the
  * centre lights up as the dot. That one moment is the whole interface.
  *
- * Amber while armed, red while live: the same two meanings the rest of the app
- * uses, amber for "what to do next" and red for "the beam is on".
+ * Blue while armed, red while live: blue marks the next control and red means
+ * the beam is on.
  *
  * Start queues a command for the Mac's browser tab, because board tracking runs
  * there where the webcam is, and connects the laser directly. The aim pad and

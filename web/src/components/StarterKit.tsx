@@ -295,7 +295,7 @@ export function KitPartsLayer({ parts, selectedId, onSelect, onMove, onDelete,
         <group key={`port-${part.instanceId}`} position={part.position}>
           <mesh position={[0, 5, 0]}>
             <sphereGeometry args={[1.25, 14, 10]} />
-            <meshStandardMaterial color="#ffcc00" emissive="#ffcc00" emissiveIntensity={.65} />
+            <meshStandardMaterial color="#2f6bd8" emissive="#2f6bd8" emissiveIntensity={.65} />
           </mesh>
         </group>
       ))}
@@ -415,7 +415,7 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
   return <group onPointerOver={(event) => { event.stopPropagation(); onHover(true); }} onPointerOut={() => onHover(false)}>
     <mesh geometry={wire.outer} castShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
       <meshStandardMaterial color={part.color} roughness={.38}
-        emissive={selected ? "#ffcc00" : part.color} emissiveIntensity={selected ? .3 : .08} />
+        emissive={selected ? "#2f6bd8" : part.color} emissiveIntensity={selected ? .3 : .08} />
     </mesh>
     <mesh geometry={wire.highlight} position={[0, .5, 0]}>
       <meshBasicMaterial color="#fff" transparent opacity={.2} depthWrite={false} />
@@ -427,7 +427,7 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
       return <group key={endName} position={point}>
         <mesh onPointerDown={(event) => { event.stopPropagation(); onDragEnd(endName); }}>
           <sphereGeometry args={[selected ? 1.8 : 1.25, 16, 12]} />
-          <meshStandardMaterial color={selected ? "#ffcc00" : "#d5d8dc"} metalness={.65} roughness={.25} />
+          <meshStandardMaterial color={selected ? "#2f6bd8" : "#d5d8dc"} metalness={.65} roughness={.25} />
         </mesh>
         <mesh position={[0, -1.25, 0]}><cylinderGeometry args={[1.2, .92, 2.8, 14]} />
           <meshStandardMaterial color={part.color} roughness={.42} /></mesh>
@@ -438,7 +438,7 @@ function JumperWire({ part, start, end, selected, hovered, onSelect, onHover, on
       </group>;
     })}
     {hovered && <Html position={[(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + 14, (start[2] + end[2]) / 2]} center>
-      <div className="canvas-part-label"><strong>Jumper wire</strong><span>Drag either glowing end onto a yellow component connection point.</span></div>
+      <div className="canvas-part-label"><strong>Jumper wire</strong><span>Drag either glowing end onto a blue component connection point.</span></div>
     </Html>}
   </group>;
 }

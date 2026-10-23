@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 
 export type Preferences = {
   theme: "dark" | "light" | "system";
+  orbitSensitivity: "slow" | "normal" | "fast";
+  renderQuality: "standard" | "low";
   narrate: boolean;
   labels: boolean;
   reduceMotion: boolean;
@@ -10,7 +12,7 @@ export type Preferences = {
 };
 export const PREFERENCES_KEY = "laser-buddy:preferences:v1";
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: "dark", narrate: false, labels: true, reduceMotion: false, dragToPlace: false, swipeNavigation: true,
+  theme: "dark", orbitSensitivity: "normal", renderQuality: "standard", narrate: false, labels: true, reduceMotion: false, dragToPlace: false, swipeNavigation: true,
 };
 function readPreferences(): Preferences {
   try {
@@ -18,6 +20,8 @@ function readPreferences(): Preferences {
     if (!saved || typeof saved !== "object") return DEFAULT_PREFERENCES;
     const next = { ...DEFAULT_PREFERENCES };
     if (["dark", "light", "system"].includes(saved.theme)) next.theme = saved.theme;
+    if (["slow", "normal", "fast"].includes(saved.orbitSensitivity)) next.orbitSensitivity = saved.orbitSensitivity;
+    if (["standard", "low"].includes(saved.renderQuality)) next.renderQuality = saved.renderQuality;
     for (const key of ["narrate", "labels", "reduceMotion", "dragToPlace", "swipeNavigation"] as const) {
       if (typeof saved[key] === "boolean") next[key] = saved[key];
     }

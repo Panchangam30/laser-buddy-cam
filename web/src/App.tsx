@@ -943,7 +943,7 @@ export default function App() {
         {problem && <p className="problem"><strong>Before you power up</strong>{problem}</p>}
         {error && <p className="error">{error}</p>}
         {keys.openai === "missing" && (
-          <p className="error">No OPENAI_API_KEY in .env, so scanning is off.</p>
+          <p className="error">Bench scanning is unavailable. See Docs for setup.</p>
         )}
 
         {/* One group for the hardware, not three. These are things you set up
@@ -1226,7 +1226,7 @@ export default function App() {
           <button className={narrate ? "toggle on" : "toggle"}
                   onClick={() => setNarrate((n) => !n)}
                   disabled={keys.xai === "missing" || voice === "live"}
-                  title={keys.xai === "missing" ? "XAI_API_KEY missing from .env" : ""}>
+                  title={keys.xai === "missing" ? "Voice is unavailable. See Docs for setup." : ""}>
             Narrate
           </button>
           </div>

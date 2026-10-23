@@ -77,8 +77,10 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
       frameloop={paused || settingsOpen ? "never" : "always"}
       data-device-ids={visibleDeviceIds}
       data-part-ids={visiblePartIds}
-      shadows
-      dpr={[1, 2]}
+      shadows={preferences.renderQuality !== "low"}
+      dpr={preferences.renderQuality === "low" ? 1 : [1, 2]}
+      data-render-quality={preferences.renderQuality}
+      data-orbit-sensitivity={preferences.orbitSensitivity}
       // Distance chosen to frame the whole 162mm board with margin at this fov.
       camera={{ position: [0, 158, 205], fov: 36 }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.95 }}
@@ -129,13 +131,14 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
         )}
       </group>
 
-      <ContactShadows position={[0, -4.6, -18]} opacity={0.5} scale={260} blur={2.6} far={30} />
-      <Navigation enabled={!focusedMove && !paused && !settingsOpen} swipe={preferences.swipeNavigation} reduceMotion={preferences.reduceMotion} />
+      {preferences.renderQuality !== "low" && <ContactShadows position={[0, -4.6, -18]} opacity={0.5} scale={260} blur={2.6} far={30} />}
+      <Navigation enabled={!focusedMove && !paused && !settingsOpen} swipe={preferences.swipeNavigation} sensitivity={preferences.orbitSensitivity} reduceMotion={preferences.reduceMotion} />
     </Canvas>
   );
 }
 
-function Navigation({ enabled, swipe, reduceMotion }: { enabled: boolean; swipe: boolean; reduceMotion: boolean }) {
+function Navigation({ enabled, swipe, sensitivity, reduceMotion }: { enabled: boolean; swipe: boolean; sensitivity: "slow" | "normal" | "fast"; reduceMotion: boolean }) {
+  const speed = sensitivity === "slow" ? 0.5 : sensitivity === "fast" ? 1.6 : 1;
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const canvas = useThree((state) => state.gl.domElement);
   useEffect(() => {
@@ -147,13 +150,13 @@ function Navigation({ enabled, swipe, reduceMotion }: { enabled: boolean; swipe:
       event.stopImmediatePropagation();
       const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
       const control = controls.current;
-      control.setAzimuthalAngle(control.getAzimuthalAngle() - event.deltaX * scale * 0.004);
-      control.setPolarAngle(Math.max(0.05, Math.min(Math.PI / 2.06, control.getPolarAngle() - event.deltaY * scale * 0.004)));
+      control.setAzimuthalAngle(control.getAzimuthalAngle() - event.deltaX * scale * 0.004 * speed);
+      control.setPolarAngle(Math.max(0.05, Math.min(Math.PI / 2.06, control.getPolarAngle() - event.deltaY * scale * 0.004 * speed)));
       control.update();
     };
     canvas.addEventListener("wheel", orbit, { passive: false, capture: true });
     return () => canvas.removeEventListener("wheel", orbit, true);
-  }, [canvas, enabled, swipe]);
-  return <OrbitControls ref={controls} makeDefault enablePan enabled={enabled} enableDamping={!reduceMotion}
+  }, [canvas, enabled, swipe, speed]);
+  return <OrbitControls ref={controls} makeDefault enablePan rotateSpeed={speed} enabled={enabled} enableDamping={!reduceMotion}
     target={[0, 0, -18]} minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />;
 }

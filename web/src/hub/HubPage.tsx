@@ -67,16 +67,16 @@ function Home() {
       <main>
         <section className="hub-hero">
           <div className="hub-hero-copy">
-            <span className="hub-eyebrow">ARDUINO HELP, WITHOUT THE HEADACHE</span>
-            <h1>Stuck is where<br /><em>learning starts.</em></h1>
-            <p>Build your first circuit, solve a mystery in 3D, or describe what went wrong. Every answer starts simple and keeps safety first.</p>
+            <span className="hub-eyebrow">ARDUINO HELP</span>
+            <h1>Find the fault.<br /><em>Fix your circuit.</em></h1>
+            <p>Wiring checks, build guides, and circuit exercises for Arduino Uno.</p>
             <label className="hub-search">
               <span aria-hidden="true">⌕</span>
               <input type="search" value={query} onChange={(event) => setQuery(event.target.value)}
                 placeholder="Try “LED stays dark” or “upload failed”" aria-label="Search Arduino help" />
               {query && <button onClick={() => setQuery("")} aria-label="Clear search">×</button>}
             </label>
-            <p className="hub-search-note">Search {HUB_PROBLEMS.length} beginner-friendly fixes</p>
+            <p className="hub-search-note">Search {HUB_PROBLEMS.length} troubleshooting guides</p>
           </div>
           <div className="hub-hero-card" aria-label="Five minute debug routine">
             <span className="hub-card-number">5:00</span>
@@ -99,19 +99,19 @@ function Home() {
         </section>
 
         <section className="hub-section hub-challenges" id="challenges">
-          <div className="hub-section-heading split"><div><span className="hub-eyebrow">3D FAULT LAB</span><h2>Can you spot what went wrong?</h2></div><p>No hardware needed. Rotate each board, make a diagnosis, and unlock hints only when you want them.</p></div>
+          <div className="hub-section-heading split"><div><span className="hub-eyebrow">3D FAULT LAB</span><h2>Circuit exercises</h2></div><p>Inspect the 3D board, identify the fault, and check your answer.</p></div>
           <div className="hub-challenge-grid">
             {CHALLENGES.map((challenge, index) => (
               <a className="hub-challenge-card" href={`/hub/challenges/${challenge.id}`} key={challenge.id}>
                 <div className="hub-challenge-visual"><span className="challenge-index">CASE {String(index + 1).padStart(2, "0")}</span><span className="challenge-glyph" aria-hidden="true">{index % 2 ? "⌁" : "⊘"}</span>{completed.includes(challenge.id) && <span className="challenge-solved">✓ Solved</span>}</div>
-                <div><small>{challenge.kicker}</small><h3>{challenge.title}</h3><p>{challenge.prompt}</p><span>Open the case →</span></div>
+                <div><small>{challenge.kicker}</small><h3>{challenge.title}</h3><p>{challenge.prompt}</p><span>Inspect circuit →</span></div>
               </a>
             ))}
           </div>
         </section>
 
         <section className="hub-section hub-library" id="problems">
-          <div className="hub-section-heading split"><div><span className="hub-eyebrow">FIX LIBRARY</span><h2>{results.length} problems, explained simply.</h2></div><p>Pick a topic or search by exactly what you see. Unplug power before changing any circuit.</p></div>
+          <div className="hub-section-heading split"><div><span className="hub-eyebrow">FIX LIBRARY</span><h2>{results.length} troubleshooting guides</h2></div><p>Pick a topic or search by exactly what you see. Unplug power before changing any circuit.</p></div>
           <div className="hub-category-tabs" role="group" aria-label="Filter by topic">
             <button className={category === "all" ? "on" : ""} onClick={() => setCategory("all")}>All <span>{HUB_PROBLEMS.length}</span></button>
             {HUB_CATEGORIES.map((item) => <button key={item.id} className={category === item.id ? "on" : ""} onClick={() => setCategory(item.id)}>{item.title} <span>{item.topics.length}</span></button>)}

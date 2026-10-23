@@ -8,7 +8,7 @@ import "./PlanNotes.css";
 
 const NOTE_WIDTH = 184;
 const NOTE_HEIGHT = 152;
-const COLORS: PlanNote["color"][] = ["yellow", "blue", "pink"];
+const COLORS: PlanNote["color"][] = ["blue", "pink", "yellow"];
 type DraftArrow = { start: PlanArrow["start"]; end: PlanArrow["end"] };
 
 export function PlanNotes({ projectId, step, bridge }: {
@@ -86,7 +86,7 @@ export function PlanNotes({ projectId, step, bridge }: {
     if (tool === "note") {
       if (doc.notes.length >= 100) return;
       const id = crypto.randomUUID();
-      commit({ ...doc, notes: [...doc.notes, { id, ...at, text: "", color: "yellow", step }] });
+      commit({ ...doc, notes: [...doc.notes, { id, ...at, text: "", color: "blue", step }] });
       setFocusedNote(id); cancelTool(); return;
     }
     const note = doc.notes.find((item) => item.id === fromNote);
@@ -170,7 +170,7 @@ export function PlanNotes({ projectId, step, bridge }: {
           const at = notePosition(note);
           return <article className={`plan-sticky ${note.color}`} key={note.id} data-testid="plan-sticky" data-note-id={note.id} style={{ left: at.x, top: at.y }} aria-label={`Sticky note ${index + 1}`} tabIndex={0} onDoubleClick={() => removeNote(note.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Delete" || event.key === "Backspace")) { event.preventDefault(); event.stopPropagation(); removeNote(note.id); } }}>
             <div className="plan-sticky-header" onPointerDown={(event) => startDrag(event, note)} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => { drag.current = null; setMoving(null); }} title="Drag to move this note"><GripVertical size={13} /><span>Note {index + 1}</span><button aria-label={`Connect note ${index + 1} with an arrow`} onClick={() => { setFromNote(note.id); setTool("arrow"); setFocusedNote(null); }}><ArrowUpRight size={14} /></button><button className="note-color" aria-label={`Change note ${index + 1} color`} title="Change note color" onClick={() => commit({ ...doc, notes: doc.notes.map((item) => item.id === note.id ? { ...item, color: COLORS[(COLORS.indexOf(item.color) + 1) % COLORS.length] } : item) })} /><button aria-label={`Delete note ${index + 1}`} onClick={() => removeNote(note.id)}><X size={13} /></button></div>
-            <textarea aria-label={`Note ${index + 1} text`} placeholder="Leave a thought…" maxLength={3000} value={note.text} autoFocus={focusedNote === note.id} onFocus={() => setFocusedNote(note.id)} onChange={(event) => commit({ ...doc, notes: doc.notes.map((item) => item.id === note.id ? { ...item, text: event.target.value } : item) }, false)} />
+            <textarea aria-label={`Note ${index + 1} text`} placeholder="Add a note…" maxLength={3000} value={note.text} autoFocus={focusedNote === note.id} onFocus={() => setFocusedNote(note.id)} onChange={(event) => commit({ ...doc, notes: doc.notes.map((item) => item.id === note.id ? { ...item, text: event.target.value } : item) }, false)} />
             <footer><span>Step {note.step}</span><span>Double-click to delete</span></footer>
           </article>;
         })}

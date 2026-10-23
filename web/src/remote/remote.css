@@ -35,7 +35,7 @@
 
 .remote .go {
   width: 100%; min-height: 124px; border: 0; border-radius: 28px;
-  background: var(--signal, #e8b33a); color: var(--signal-ink, #1a1403);
+  background: var(--signal, #2f6bd8); color: var(--signal-ink, #ffffff);
   font: 600 26px/1 var(--sans, system-ui); letter-spacing: -.02em;
   transition: transform .08s ease, filter .12s ease;
 }
@@ -84,8 +84,8 @@
   transition: background .1s ease, transform .07s ease, border-color .12s ease;
 }
 .remote .pad > button:active:not(:disabled) {
-  background: var(--signal, #e8b33a); color: var(--signal-ink, #1a1403);
-  border-color: var(--signal, #e8b33a); transform: scale(.97);
+  background: var(--signal, #2f6bd8); color: var(--signal-ink, #ffffff);
+  border-color: var(--signal, #2f6bd8); transform: scale(.97);
 }
 .remote .pad > button:disabled { opacity: .3; }
 
@@ -144,7 +144,7 @@
 .remote .note {
   margin: 0; font-size: 13.5px; line-height: 1.5;
   color: var(--ink, #eceef0); padding-left: 12px;
-  border-left: 2px solid var(--signal, #e8b33a);
+  border-left: 2px solid var(--signal, #2f6bd8);
 }
 .remote .note.quiet { color: var(--ink-dim, #969ca4); border-left-color: var(--rule, #2b2f35); }
 
@@ -178,8 +178,8 @@
    ========================================================================== */
 
 .scope {
-  --tone: #e8b33a;                         /* armed: "what to do next" */
-  --tone-soft: rgba(232, 179, 58, .16);
+  --tone: #2f6bd8;                         /* armed: "what to do next" */
+  --tone-soft: rgba(47, 107, 216, .16);
   min-height: 100dvh;
   display: grid; place-items: center; align-content: center; gap: 26px;
   padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));

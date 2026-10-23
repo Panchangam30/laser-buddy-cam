@@ -3,9 +3,9 @@
   color-scheme:dark;
   --chassis:#14171c; --panel:#1b1f26; --raised:#252b34; --rule:#343c47;
   --ink:#e7ebf1; --ink-dim:#b3bdcb; --ink-faint:#939faf;
-  --signal:#a5c4ff; --signal-ink:#14233d;
+  --signal:#a5c4ff; --signal-ink:#14233d; --signal-text:#a5c4ff;
   --rail-red-ink:#ff9f98; --good:#82d4a5; --warn:#ecc48a;
-  --hub-bg:var(--chassis); --hub-panel:var(--panel); --hub-line:var(--rule); --hub-copy:var(--ink-dim); --hub-yellow:var(--signal);
+  --hub-bg:var(--chassis); --hub-panel:var(--panel); --hub-line:var(--rule); --hub-copy:var(--ink-dim); --hub-accent:var(--signal);
   --shadow-sm:0 1px 3px #0003; --shadow-md:0 12px 36px #0004;
 }
 html[data-reduce-motion="true"] { scroll-behavior:auto; }
@@ -16,7 +16,7 @@ html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, ht
 .component-tile .component-card { width:100%; cursor:pointer; touch-action:pan-y; }
 .component-tile .component-card[draggable="true"] { cursor:grab; }
 .component-tile img { user-select:none; -webkit-user-drag:none; }
-.purchase-link { flex:none; font-size:11px; color:var(--signal); text-decoration:none; padding:5px 7px; border-radius:6px; white-space:nowrap; }
+.purchase-link { flex:none; font-size:11px; color:var(--signal-text); text-decoration:none; padding:5px 7px; border-radius:6px; white-space:nowrap; }
 .purchase-link:hover { text-decoration:underline; background:var(--raised); }
 .component-empty { color:var(--ink-dim); font-size:13px; padding:16px 4px; }
 .component-tooltip { background:var(--panel); }
@@ -31,7 +31,7 @@ html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, ht
 :root[data-theme="dark"] :is(.docs-topbar,.hub-topbar) { background:color-mix(in srgb,var(--panel) 94%,transparent); }
 :root[data-theme="dark"] :is(.docs-sidebar,.hub-path,.hub-guide,.hub-hero-card,.hub-search,.hub-problem-card,.hub-challenge-card,.hub-challenge-visual,.hub-category-tabs button,.hub-empty,.problem-detail header > div span,.challenge-panel,.challenge-panel fieldset button) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
 :root[data-theme="dark"] :is(.hub-topbar nav a,.hub-brand em,.hub-hero-copy > p,.hub-hero-card ol,.hub-section-heading.split > p,.hub-guide p,.hub-problem-card p,.hub-search input,.docs-topbar nav a,.docs-sidebar a) { color:var(--ink-dim); }
-:root[data-theme="dark"] :is(.hub-category-tabs button.on,.challenge-panel fieldset button.chosen) { background:var(--raised); color:var(--signal); border-color:var(--signal); }
+:root[data-theme="dark"] :is(.hub-category-tabs button.on,.challenge-panel fieldset button.chosen) { background:var(--signal); color:var(--signal-ink); border-color:var(--signal); }
 :root[data-theme="dark"] .settings-dialog { background:var(--panel); color:var(--ink); }
 @media (max-width:820px) { .component-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .component-tile .component-card { min-height:105px; } }
 :root[data-theme="dark"] .canvas-part-label { background:var(--panel); }

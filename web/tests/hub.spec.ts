@@ -12,7 +12,7 @@ test.describe("Arduino learning hub", () => {
   test("renders the complete searchable help catalog", async ({ page }) => {
     await page.goto("/hub");
     await expect(page).toHaveTitle("Arduino Learning Hub · Laser Buddy");
-    await expect(page.getByRole("heading", { name: /Stuck is where/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Find the fault/ })).toBeVisible();
     await expect(page.locator(".hub-challenge-card")).toHaveCount(8);
     await expect(page.locator(".hub-problem-card")).toHaveCount(216);
 
@@ -59,10 +59,10 @@ test.describe("Arduino learning hub", () => {
   test("hands a challenge to the physical workbench without duplicate ids", async ({ page }) => {
     await page.goto("/?challenge=backwards-led");
     const panel = page.getByLabel("Troubleshooting challenge");
-    await expect(panel).toContainText("The stubborn LED");
+    await expect(panel).toContainText("Reversed LED");
     await expect(panel.getByRole("button", { name: "Unlock hint 2" })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel("Troubleshooting challenge")).toContainText("The stubborn LED");
+    await expect(page.getByLabel("Troubleshooting challenge")).toContainText("Reversed LED");
   });
 
   test("keeps the learning library usable on a phone", async ({ page }) => {

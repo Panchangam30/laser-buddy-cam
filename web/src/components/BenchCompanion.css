@@ -25,26 +25,26 @@
 .bench-fields select,.bench-fields input { width:100%; min-width:0; padding:10px; color:#eceef0; background:#16181b; border:1px solid #3a3e45; border-radius:8px; color-scheme:dark; }
 .bench-note { font-size:11px; line-height:1.7; color:#969ca4; margin:18px 0 0; }
 .led-result { display:flex; align-items:center; gap:18px; padding:24px; margin-top:24px; border:1px solid #3a3e45; border-radius:8px; background:#202328; }
-.led-result>svg { color:#e8b33a; flex-shrink:0; }
+.led-result>svg { color:var(--signal); flex-shrink:0; }
 .led-result span { color:#b4ab98; font-size:11px; }
-.led-result strong { display:block; font:32px var(--mono); color:#f0d28b; margin:6px 0; }
+.led-result strong { display:block; font:32px var(--mono); color:#a5c4ff; margin:6px 0; }
 .led-result p { margin:0; color:#b4ab98; font-size:11px; }
 .led-result-stats { display:grid; gap:3px; margin-left:auto; flex-shrink:0; }
 .led-result-stats b { font:14px var(--mono); margin-top:6px; }
-.bench-check-progress { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#e8b33a; }
+.bench-check-progress { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--signal); }
 .bench-check-progress button { background:transparent; border:0; color:#969ca4; font-size:11px; }
-.bench-tool progress { display:block; width:100%; height:5px; margin:10px 0 20px; accent-color:#e8b33a; border:0; border-radius:9px; overflow:hidden; }
+.bench-tool progress { display:block; width:100%; height:5px; margin:10px 0 20px; accent-color:var(--signal); border:0; border-radius:9px; overflow:hidden; }
 .bench-tool progress::-webkit-progress-bar { background:#33373d; }
-.bench-tool progress::-webkit-progress-value { background:#e8b33a; }
+.bench-tool progress::-webkit-progress-value { background:var(--signal); }
 .bench-checks { display:grid; gap:8px; }
 .bench-checks label { position:relative; display:flex; align-items:center; gap:12px; padding:13px; border:1px solid #34383e; border-radius:9px; cursor:pointer; }
 .bench-checks label:has(input:checked) { background:#4fa97a0a; border-color:#4fa97a50; }
 .bench-checks input { position:absolute; opacity:0; width:20px; height:20px; }
 .bench-check-icon { display:grid; place-items:center; width:20px; height:20px; border:1px solid #626770; border-radius:5px; flex-shrink:0; pointer-events:none; }
 .bench-check-icon svg { opacity:0; }
-.bench-checks input:checked+.bench-check-icon { background:#e8b33a; border-color:#e8b33a; color:#1a1403; }
+.bench-checks input:checked+.bench-check-icon { background:var(--signal); border-color:var(--signal); color:var(--signal-ink); }
 .bench-checks input:checked+.bench-check-icon svg { opacity:1; }
-.bench-checks input:focus-visible+.bench-check-icon { outline:2px solid #e8b33a; outline-offset:3px; }
+.bench-checks input:focus-visible+.bench-check-icon { outline:2px solid var(--signal); outline-offset:3px; }
 .bench-checks strong { display:block; font-weight:500; font-size:12px; }
 .bench-checks small { display:block; color:#969ca4; font-size:11px; margin-top:2px; }
 .bench-footer { display:flex; justify-content:space-between; gap:12px; padding:17px 32px; border-top:1px solid #30343a; background:#181a1e; color:#969ca4; font-size:10px; }

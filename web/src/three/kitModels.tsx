@@ -27,13 +27,13 @@ export interface ModelProps {
   /** Kit part id, for the variations that depend on it. */
   id: string;
   color: string;
-  /** Yellow rim while the part is selected on the canvas. */
+  /** Blue rim while the part is selected on the canvas. */
   selected?: boolean;
 }
 
 function useSelectionGlow(selected?: boolean) {
   return selected
-    ? { emissive: "#ffcc00", emissiveIntensity: 0.32 }
+    ? { emissive: "#2f6bd8", emissiveIntensity: 0.32 }
     : { emissive: "#000000", emissiveIntensity: 0 };
 }
 

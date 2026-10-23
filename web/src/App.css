@@ -1,12 +1,3 @@
-/* ==========================================================================
-   Bench Assembly
-
-   The 3D board is the only bright object on screen; everything else is the
-   matte chassis around it, the way a bench instrument surrounds its work
-   surface. Status colours are sampled from the board's own printed rails, so
-   the interface and the object it describes share materials.
-   ========================================================================== */
-
 :root {
   /* White page, black type. Depth comes from hairline rules and very soft
      shadows, not from tinted layers. */
@@ -19,9 +10,9 @@
   --ink-dim:   #4b5058;
   --ink-faint: #6b7079;
 
-  /* The one loud colour is black: primary actions are solid black pills. */
-  --signal:     #0b0b0c;
+  --signal:     #2f6bd8;
   --signal-ink: #ffffff;
+  --signal-text: #245ea8;
 
   /* Status colours, deepened so they read as text on white. */
   --rail-red:  #c8362c;
@@ -115,7 +106,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   border: 1px solid var(--rule); border-radius: var(--r-sm);
   color: var(--ink-dim); background: var(--raised); font-size: 19px; font-weight: 700;
 }
-.sidebar-toggle:hover { color: var(--signal); border-color: color-mix(in srgb, var(--signal), transparent 55%); }
+.sidebar-toggle:hover { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal), transparent 55%); }
 .panel.collapsed .sidebar-toggle {
   float: none; width: 42px; min-height: 90px; margin: 14px 5px; flex-direction: column;
 }
@@ -235,7 +226,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   background: var(--signal);
 }
 .step .n { position: relative; }
-.step.active .n { color: var(--signal); }
+.step.active .n { color: var(--signal-text); }
 
 /* --- camera and messages -------------------------------------------------- */
 
@@ -378,7 +369,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   padding: 16px 20px;
 }
 .instruction strong {
-  display: block; font-size: 12px; font-weight: 500; color: var(--signal);
+  display: block; font-size: 12px; font-weight: 500; color: var(--signal-text);
   margin-bottom: 7px;
 }
 .instruction p { margin: 0; font-family: var(--serif); font-size: 16px; line-height: 1.55; color: var(--ink); }
@@ -438,7 +429,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 }
 .components-trigger:hover, .components-trigger.on { border-color: var(--ink-faint); }
 .cube-icon { color: var(--ink-faint); font-size: 17px; line-height: 0; transform: rotate(45deg); }
-.components-trigger.on .cube-icon { color: var(--signal); }
+.components-trigger.on .cube-icon { color: var(--signal-text); }
 
 .simulation-trigger {
   position: absolute; z-index: 8; top: 16px; left: 164px;
@@ -535,14 +526,14 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .hub-trigger {
   position: absolute; z-index: 8; top: 16px; right: 91px; display: grid;
   place-items: center; width: 36px; height: 36px; border-radius: var(--r-sm);
-  color: var(--signal); font: 800 15px/1 var(--mono); text-decoration: none;
+  color: var(--signal-text); font: 800 15px/1 var(--mono); text-decoration: none;
   transition: color .12s ease, border-color .12s ease, background .12s ease;
 }
 .hub-trigger:hover { border-color: var(--signal); background: rgba(253, 252, 248, .88); }
 .replay-trigger { position: absolute; z-index: 8; right: 16px; top: 62px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: rgba(251, 251, 252,.9); color: var(--ink-dim); font-size: 11px; }
 .replay-panel { position: absolute; z-index: 10; top: 106px; right: 16px; width: min(430px, calc(100% - 32px)); max-height: calc(100% - 310px); overflow-y: auto; padding: 16px; border: 1px solid var(--rule); border-radius: var(--r-md); background: rgba(251, 251, 252,.97); }
 .replay-panel header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.replay-panel header span { display: block; color: var(--signal); font: 9px var(--mono); letter-spacing: .1em; }
+.replay-panel header span { display: block; color: var(--signal-text); font: 9px var(--mono); letter-spacing: .1em; }
 .replay-panel header strong { font-size: 13px; }
 .replay-panel button, .replay-panel select { border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); color: var(--ink); padding: 6px 8px; font-size: 10px; }
 .replay-panel button:disabled { opacity: .4; }
@@ -564,20 +555,20 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 
 .workbench-challenge {
   position: absolute; z-index: 7; top: 65px; right: 16px; width: 285px;
-  padding: 15px; border: 1px solid #dbcfab; border-radius: var(--r-md);
+  padding: 15px; border: 1px solid color-mix(in srgb,var(--signal) 30%,var(--rule)); border-radius: var(--r-md);
   background: rgba(252, 252, 251, .94); backdrop-filter: blur(15px);
 }
-.workbench-challenge > span { color: var(--signal); font-size: 8px; font-weight: 800; letter-spacing: .12em; }
+.workbench-challenge > span { color: var(--signal-text); font-size: 8px; font-weight: 800; letter-spacing: .12em; }
 .workbench-challenge > strong { display: block; margin-top: 3px; font-size: 13px; }
 .workbench-challenge > p { margin: 5px 0 11px; color: var(--ink-dim); font-size: 10px; line-height: 1.45; }
-.workbench-challenge > small { display: block; margin: -3px 0 11px; padding: 7px 8px; border-left: 2px solid var(--signal); color: #5e5944; background: #fcfbfa; font-size: 9px; line-height: 1.45; }
+.workbench-challenge > small { display: block; margin: -3px 0 11px; padding: 7px 8px; border-left: 2px solid var(--signal); color: var(--ink-dim); background: #fcfbfa; font-size: 9px; line-height: 1.45; }
 .workbench-challenge > div { display: flex; gap: 6px; }
 .workbench-challenge a, .workbench-challenge button {
   flex: 1; padding: 6px; border: 1px solid var(--rule); border-radius: 6px;
   color: var(--ink-dim); background: var(--raised); text-align: center;
   text-decoration: none; font-size: 9px;
 }
-.workbench-challenge button:not(:disabled) { color: var(--signal); border-color: #dbcfab; }
+.workbench-challenge button:not(:disabled) { color: var(--signal-text); border-color: color-mix(in srgb,var(--signal) 40%,var(--rule)); }
 .workbench-challenge button:disabled { opacity: .55; cursor: default; }
 
 .part-actions {
@@ -606,7 +597,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   border-radius: var(--r-sm); padding: 5px 10px; font-size: 12px;
 }
 .boardmap-bar button:hover { color: var(--ink); }
-.boardmap-bar button.on { color: var(--signal); border-color: color-mix(in srgb, var(--signal), transparent 55%); }
+.boardmap-bar button.on { color: var(--signal-text); border-color: color-mix(in srgb, var(--signal), transparent 55%); }
 
 .plan-stage:has(.components-drawer) canvas { cursor: crosshair; }
 
@@ -730,7 +721,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .project-panel > header { display: flex; justify-content: space-between; gap: 16px; }
 .project-panel h2 { margin: 2px 0 0; font-size: 23px; }
 .project-panel h3 { margin: 0; font-size: 13px; }
-.project-panel .eyebrow { color: var(--signal); font: 10px var(--mono); letter-spacing: .12em; }
+.project-panel .eyebrow { color: var(--signal-text); font: 10px var(--mono); letter-spacing: .12em; }
 .project-panel .closebtn { width: 34px; height: 34px; padding: 0; font-size: 21px; }
 .tutorial-catalog { margin-top: 22px; }
 .tutorial-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -740,13 +731,13 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .tutorial-search { display: grid; gap: 7px; font-size: 12px; }
 .tutorial-search input { width: 100%; box-sizing: border-box; border: 1px solid var(--rule); border-radius: var(--r-sm); padding: 10px 12px; background: var(--chassis); color: var(--ink); font: inherit; }
 .tutorial-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
-.tutorial-filters button[aria-pressed="true"] { border-color: var(--signal); color: var(--signal); background: var(--chassis); }
+.tutorial-filters button[aria-pressed="true"] { border-color: var(--signal); color: var(--signal-text); background: var(--chassis); }
 .tutorial-results { display: block; margin: 8px 0; color: var(--ink-faint); font-size: 11px; }
 .tutorial-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 290px; overflow-y: auto; overscroll-behavior: contain; padding: 3px 5px 5px 3px; }
 .project-panel .tutorial-card { display: flex; flex-direction: column; align-items: stretch; gap: 7px; padding: 13px; text-align: left; background: var(--chassis); min-height: 148px; }
 .tutorial-card strong { font-size: 13px; line-height: 1.4; }
 .tutorial-card > span:not(.tutorial-category) { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
-.tutorial-card .tutorial-category { display: flex; justify-content: space-between; color: var(--signal); font: 10px var(--mono); }
+.tutorial-card .tutorial-category { display: flex; justify-content: space-between; color: var(--signal-text); font: 10px var(--mono); }
 .tutorial-card small { margin-top: auto; font-size: 10px; color: var(--ink-faint); }
 .tutorial-card:hover:not(:disabled), .tutorial-card:focus-visible { border-color: var(--signal); }
 @media (max-width: 480px) { .tutorial-grid { grid-template-columns: 1fr; } .tutorial-heading { align-items: flex-start; } }
@@ -793,7 +784,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   padding: 7px 10px; background: var(--raised); color: var(--ink);
 }
 .manual-complete.done { border-color: var(--good); color: #278b57; }
-.artifact summary { cursor: pointer; color: var(--signal); }
+.artifact summary { cursor: pointer; color: var(--signal-text); }
 .artifact pre {
   max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 12px;
   border: 1px solid var(--rule); border-radius: var(--r-sm);
@@ -864,7 +855,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .objlist .objname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .objlist .objname small { color: var(--ink-faint); }
 .objlist .ghostbtn { padding: 3px 9px; font-size: 12px; }
-.objlist .ghostbtn.on { color: var(--signal); border-color: var(--signal); }
+.objlist .ghostbtn.on { color: var(--signal-text); border-color: var(--signal); }
 .objectstage { display: flex; }
 .objectview {
   flex: 1; min-width: 0; display: flex; flex-direction: column;

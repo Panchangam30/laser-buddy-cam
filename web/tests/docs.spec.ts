@@ -81,3 +81,65 @@ test.describe("documentation", () => {
     await expect(details).toContainText("python -m vision.service");
   });
 });
+
+test("finds topics and highlights the current section", async ({ page }) => {
+  await page.goto("/docs");
+  const nav = page.getByRole("navigation", { name: "Documentation", exact: true });
+  await page.getByRole("searchbox", { name: "Find a documentation topic" }).fill("laser");
+  await expect(nav.getByRole("link")).toHaveCount(1);
+  await nav.getByRole("link", { name: "Laser pointer" }).click();
+  await expect(page).toHaveURL(/#laser$/);
+  await expect(nav.getByRole("link", { name: "Laser pointer" })).toHaveAttribute("aria-current", "location");
+  await expect(nav.getByRole("link")).toHaveCount(14);
+});
+
+test("copies installation commands", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/docs#installation");
+  await page.locator("#installation").getByRole("button", { name: "Copy terminal code" }).click();
+  await expect(page.locator("#installation").getByRole("button")).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("npm run dev");
+});
+
+for (const theme of ["dark", "light"] as const) {
+  test(`${theme} documentation has readable text and contained content`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem("laser-buddy:preferences:v1", JSON.stringify({ theme: value })), theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/docs");
+    const contrast = await page.locator(".docs-lead").evaluate((paragraph) => {
+      const rgb = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map((value) => {
+        const channel = value / 255;
+        return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+      }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+      const text = rgb(getComputedStyle(paragraph).color);
+      const background = rgb(getComputedStyle(document.querySelector(".docs-site")!).backgroundColor);
+      return (Math.max(text, background) + .05) / (Math.min(text, background) + .05);
+    });
+    expect(contrast).toBeGreaterThan(4.5);
+    await expect(page.locator(".docs-toc")).toBeVisible();
+    await page.screenshot({ path: `test-results/docs-${theme}.png` });
+    await page.goto("/docs#installation");
+    await page.locator("#installation").evaluate((element) => element.scrollIntoView({ behavior: "instant" }));
+    await expect(page.locator("#installation .docs-code")).toBeVisible();
+    await page.screenshot({ path: `test-results/docs-installation-${theme}.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("mobile menu opens, navigates and closes without horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/docs");
+  await page.screenshot({ path: "test-results/docs-mobile.png" });
+  const menu = page.getByRole("button", { name: "Documentation", exact: true });
+  await expect(page.locator(".docs-sidebar")).toBeHidden();
+  await menu.click();
+  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("navigation", { name: "Documentation", exact: true }).getByRole("link", { name: "Configuration", exact: true }).click();
+  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/#configuration$/);
+  await expect(page.locator(".docs-sidebar")).toBeHidden();
+  await expect(page.locator("#configuration h2")).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.locator("#configuration").evaluate((element) => element.scrollIntoView({ behavior: "instant" }));
+  await page.screenshot({ path: "test-results/docs-mobile-configuration.png" });
+});
