@@ -10,7 +10,7 @@
 }
 html[data-reduce-motion="true"] { scroll-behavior:auto; }
 html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, html[data-reduce-motion="true"] *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
-:is(.panel,.component-grid,.tutorial-grid,.project-modal,.bench-dialog,.replay-panel) { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+:is(.panel,.component-grid,.tutorial-grid,.project-panel,.bench-dialog,.replay-panel) { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
 .component-grid { touch-action:pan-y; min-height:0; }
 .component-tile { min-width:0; display:flex; flex-direction:column; align-items:center; padding-bottom:8px; border:1px solid var(--rule); border-radius:14px; background:var(--chassis); }
 .component-tile .component-card { width:100%; cursor:pointer; touch-action:pan-y; }
@@ -20,12 +20,13 @@ html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, ht
 .purchase-link:hover { text-decoration:underline; background:var(--raised); }
 .component-empty { color:var(--ink-dim); font-size:13px; padding:16px 4px; }
 .component-tooltip { background:var(--panel); }
-:root[data-theme="dark"] :is(.panel,.panel .tracker,.panel .laser,.panel .device,.panel .objlist li,.instruction,.viewswitch,.controls,.components-drawer,.project-modal,.calwiz,.replay-panel,.boardmap) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
+:root[data-theme="dark"] :is(.panel,.panel .tracker,.panel .laser,.panel .device,.panel .objlist li,.instruction,.viewswitch,.components-drawer,.project-panel,.calwiz,.replay-panel,.boardmap) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
 :root[data-theme="dark"] :is(.panel .step .n,.panel .askform input,.panel .modeswitch button.on,.panel .project-trigger,.panel .sidebar-toggle,.controls button,.ghostbtn,.trackbtn,.pill.ghost,.orb-mute,.seg button.on) { background:var(--raised); color:var(--ink); border-color:var(--rule); }
-:root[data-theme="dark"] :is(.panel .step.active .n,.viewswitch button.on,.controls .toggle.on,.panel .talkbtn,.panel .project-tool:hover) { background:var(--signal); color:var(--signal-ink); border-color:var(--signal); }
+:root[data-theme="dark"] :is(.panel .step.active .n,.viewswitch button.on,.controls .toggle.on,.panel .talkbtn) { background:var(--signal); color:var(--signal-ink); border-color:var(--signal); }
 :root[data-theme="dark"] .panel :is(.trackbtn,.ghostbtn,.pillbtn,.project-trigger,.mutebtn) { background:var(--raised); color:var(--ink); border:1px solid var(--rule); }
 :root[data-theme="dark"] :is(.panel .step.done .n,.livechip,.calwiz-ok) { background:#20382e; color:var(--good); }
-:root[data-theme="dark"] :is(.panel .availability.missing,.problem,.warn) { background:#39292b; color:var(--rail-red-ink); }
+:root[data-theme="dark"] .panel .availability.missing { background:#39292b; color:var(--rail-red-ink); }
+:root[data-theme="dark"] :is(.problem,.warn) { color:var(--rail-red-ink); }
 :root[data-theme="dark"] :is(.panel .availability.available,.panel .availability.have) { background:#20382e; color:var(--good); }
 :root[data-theme="dark"] :is(.artifact pre,.project-goal textarea,.project-share-link input,.tutorial-card,.workbench-challenge > small) { background:var(--chassis); color:var(--ink-dim); }
 :root[data-theme="dark"] :is(.docs-topbar,.hub-topbar) { background:color-mix(in srgb,var(--panel) 94%,transparent); }
@@ -51,3 +52,43 @@ html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, ht
   .stage .voiceorb { top:150px; right:18px; left:auto; transform:none; width:90px; --orb:48px; }
   .camera-pip { bottom:150px; }
 }
+
+/* Dark hover states. The dark surfaces above out-rank the light theme's :hover
+   rules, so without these most floating controls did not react to the pointer
+   at all, and the tracker kept the light theme's near-black hover. */
+:root[data-theme="dark"] { --hover:color-mix(in srgb,var(--raised),var(--ink) 9%); }
+:root[data-theme="dark"] :is(.components-trigger,.docs-trigger,.hub-trigger,.replay-trigger,.simulation-trigger:not(:disabled),.simulation-more,.controls button:not(:disabled),.panel .project-trigger,.panel .sidebar-toggle):hover,
+:root[data-theme="dark"] .panel .tracker :is(.trackbtn,.ghostbtn):hover:not(:disabled),
+:root[data-theme="dark"] .panel :is(.trackbtn,.ghostbtn,.pillbtn,.mutebtn):hover:not(:disabled) { background:var(--hover); color:var(--ink); border-color:var(--ink-faint); }
+:root[data-theme="dark"] .controls .toggle.on:not(:disabled):hover { background:color-mix(in srgb,var(--signal),#fff 14%); color:var(--signal-ink); border-color:var(--signal); }
+/* A toggle that is on but unavailable in this view should not look engaged. */
+:root[data-theme="dark"] .controls .toggle.on:disabled { background:var(--raised); color:var(--ink-dim); border-color:var(--rule); }
+
+/* The notes toolbar sits where the open drawer's heading is; the drawer wins. */
+.stage:has(:is(.components-drawer,.simulation-panel)) :is(.plan-notes-controls,.plan-notes-help) { display:none; }
+:root[data-theme="dark"] .project-scrim { background:#0a0c10b8; }
+:root[data-theme="dark"] .goal-form input { background:var(--chassis); color:var(--ink); border-color:var(--rule); }
+
+/* Simulation details were a light card carrying the dark theme's light ink, so
+   its labels, part names and tooltip text disappeared. */
+:root[data-theme="dark"] .simulation-panel { background:color-mix(in srgb,var(--panel) 97%,transparent); border-color:var(--rule); }
+:root[data-theme="dark"] .simulation-panel p { color:var(--ink-dim); }
+:root[data-theme="dark"] :is(.simulation-panel p strong,.simulation-parts-heading span) { color:var(--good); }
+:root[data-theme="dark"] :is(.simulation-parts,.simulation-part-row,.simulation-panel .simulation-caveat) { border-color:var(--rule); }
+:root[data-theme="dark"] .simulation-power { background:var(--raised); border-color:var(--rule); color:var(--good); }
+:root[data-theme="dark"] .simulation-power:hover { background:var(--hover); }
+:root[data-theme="dark"] .simulation-more::after { background:var(--panel); color:var(--ink); border-color:var(--rule); }
+
+/* The camera's scan button kept the light theme's white fill under light ink. */
+:root[data-theme="dark"] .camera-pip .capture { background:var(--signal); color:var(--signal-ink); }
+:root[data-theme="dark"] .camera-pip .capture:hover:not(:disabled) { background:color-mix(in srgb,var(--signal),#fff 14%); }
+:root[data-theme="dark"] .camera-pip .capture:disabled { background:var(--raised); color:var(--ink-faint); opacity:1; }
+
+/* The stage is dark in both themes. A white pill at half opacity read as a grey
+   slab there, so a disabled stage control is a faint outline instead. */
+:root:not([data-theme="dark"]) :is(.controls button,.simulation-trigger):disabled {
+  background:rgba(255,255,255,.06); color:rgba(255,255,255,.42); border-color:rgba(255,255,255,.14);
+  box-shadow:none; opacity:1;
+}
+:root:not([data-theme="dark"]) .controls .toggle.on:disabled::before { background:rgba(255,255,255,.42); }
+:root:not([data-theme="dark"]) .simulation-trigger:disabled > span { color:rgba(255,255,255,.42); }

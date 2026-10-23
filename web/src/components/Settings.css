@@ -1,5 +1,6 @@
 .settings-trigger { position:fixed; z-index:40; bottom:14px; left:14px; display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--rule); border-radius:999px; background:var(--panel); color:var(--ink-dim); box-shadow:var(--shadow-md); font-size:12px; }
-.settings-trigger:hover { color:var(--ink); background:var(--raised); }
+.settings-trigger:hover { color:var(--ink); background:var(--raised); border-color:var(--ink-faint); }
+@media(min-width:821px) { body:has(.app.sidebar-collapsed) .settings-trigger { left:6px; padding:10px; } body:has(.app.sidebar-collapsed) .settings-trigger span { display:none; } }
 .settings-dialog { width:min(540px,calc(100vw - 28px)); background:var(--panel); color:var(--ink); border-color:var(--rule); border-radius:16px; display:flex; flex-direction:column; max-height:calc(100dvh - 32px); overflow:hidden; padding:0; }
 .settings-heading { padding:25px 28px 20px; border-top:3px solid var(--signal); flex:none; }
 .settings-eyebrow { display:flex; align-items:center; gap:7px; font-size:10px; letter-spacing:.12em; color:var(--signal-text); }

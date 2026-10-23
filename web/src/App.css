@@ -117,7 +117,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .panel .build { padding-bottom: 6px; }
 .project-tools {
   display: flex;
-  margin: 16px 0 18px;
+  margin: 16px 0 0;
   border: 1px solid var(--rule);
   border-radius: 6px;
   overflow: hidden;
@@ -161,7 +161,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   font-size: 13px; font-weight: 600;
 }
 .chev { color: var(--ink-faint); font-size: 15px; line-height: 1; }
-.grouptoggle:hover .chev { color: var(--ink); }
+.grouptoggle:hover, .grouptoggle:hover .chev { color: var(--ink); }
 
 /* Each device is a card, so the four of them read as one set of tools rather
    than as four sections competing with the build. */
@@ -427,7 +427,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   color: var(--ink); font-size: 12.5px; font-weight: 500;
   transition: border-color .12s ease;
 }
-.components-trigger:hover, .components-trigger.on { border-color: var(--ink-faint); }
+.components-trigger:hover, .components-trigger.on { border-color: var(--ink-faint); background: var(--raised); }
 .cube-icon { color: var(--ink-faint); font-size: 17px; line-height: 0; transform: rotate(45deg); }
 .components-trigger.on .cube-icon { color: var(--signal-text); }
 
@@ -461,6 +461,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   transition: opacity .12s ease .35s, visibility 0s linear .35s;
 }
 .simulation-more:hover::after, .simulation-more:focus-visible::after { opacity: 1; visibility: visible; }
+.simulation-more.on::after { display: none; }
 .simulation-panel {
   position: absolute; z-index: 7; top: 60px; left: 164px;
   width: 320px; max-height: calc(100% - 212px); overflow-y: auto; padding: 14px;
@@ -510,6 +511,11 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .simulation-panel .simulation-caveat {
   color: var(--warn); border-top: 1px solid #f7f8f7; padding-top: 10px;
 }
+/* Components grows a count badge once parts are placed; the simulation
+   controls step right so the two pills keep the same gap. */
+.stage:has(.component-count) .simulation-trigger { left: 182px; }
+.stage:has(.component-count) .simulation-more { left: 340px; }
+.stage:has(.component-count) .simulation-panel { left: 182px; }
 .component-count {
   display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--raised); color: var(--ink); font-size: 10.5px;
@@ -525,18 +531,20 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 
 .hub-trigger {
   position: absolute; z-index: 8; top: 16px; right: 91px; display: grid;
-  place-items: center; width: 36px; height: 36px; border-radius: var(--r-sm);
+  place-items: center; width: 36px; height: 36px; border-radius: 50%;
   color: var(--signal-text); font: 800 15px/1 var(--mono); text-decoration: none;
   transition: color .12s ease, border-color .12s ease, background .12s ease;
 }
-.hub-trigger:hover { border-color: var(--signal); background: rgba(253, 252, 248, .88); }
-.replay-trigger { position: absolute; z-index: 8; right: 16px; top: 62px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: rgba(251, 251, 252,.9); color: var(--ink-dim); font-size: 11px; }
+.hub-trigger:hover { border-color: var(--ink-faint); background: var(--raised); }
+.replay-trigger { position: absolute; z-index: 8; right: 16px; top: 62px; min-height: 36px; padding: 7px 16px; border: 1px solid var(--rule); border-radius: var(--r-pill); background: rgba(251, 251, 252,.9); color: var(--ink-dim); font-size: 12.5px; font-weight: 500; transition: border-color .12s ease, background .12s ease; }
+.replay-trigger:hover { border-color: var(--ink-faint); }
 .replay-panel { position: absolute; z-index: 10; top: 106px; right: 16px; width: min(430px, calc(100% - 32px)); max-height: calc(100% - 310px); overflow-y: auto; padding: 16px; border: 1px solid var(--rule); border-radius: var(--r-md); background: rgba(251, 251, 252,.97); }
 .replay-panel header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .replay-panel header span { display: block; color: var(--signal-text); font: 9px var(--mono); letter-spacing: .1em; }
 .replay-panel header strong { font-size: 13px; }
 .replay-panel button, .replay-panel select { border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); color: var(--ink); padding: 6px 8px; font-size: 10px; }
 .replay-panel button:disabled { opacity: .4; }
+.replay-panel header button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 16px; line-height: 1; }
 .replay-panel p { color: var(--ink-dim); font-size: 11px; line-height: 1.6; }
 .replay-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 13px 0; }
 .replay-actions label { font-size: 10px; color: var(--ink-dim); }
@@ -851,7 +859,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   display: flex; align-items: center; gap: 6px; padding: 5px 8px;
   border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--raised);
 }
-.objlist li.lost { opacity: .6; }
+.objlist li.lost .objname { color: var(--ink-faint); }
 .objlist .objname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .objlist .objname small { color: var(--ink-faint); }
 .objlist .ghostbtn { padding: 3px 9px; font-size: 12px; }
@@ -909,7 +917,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   box-shadow: 0 2px 10px rgba(0, 0, 0, .25); backdrop-filter: none;
 }
 .controls button:disabled { opacity: .55; }
-.controls .toggle { color: var(--ink-faint); }
+.controls .toggle { color: var(--ink-dim); }
 .controls .toggle.on { background: #fff; color: var(--ink); border-color: var(--ink); }
 .viewswitch button.on { background: var(--ink); color: #fff; }
 .controls .tally, .controls .progress { color: #c9ccd2; }
@@ -942,6 +950,16 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
    corner radius, white cards, a single black primary action.
    ========================================================================== */
 .panel { padding: 22px 22px 48px; background: #fff; }
+/* The settings button is fixed over the sidebar's bottom-left corner. A sticky
+   strip at the end of the panel keeps the last controls clear of it and fades
+   whatever scrolls underneath, instead of the button sitting on a control. */
+@media (min-width: 821px) {
+  .panel:not(.collapsed) { padding-bottom: 0; }
+  .panel:not(.collapsed)::after {
+    content: ""; display: block; position: sticky; bottom: 0; height: 72px; margin: 0 -22px;
+    background: linear-gradient(to bottom, transparent, var(--panel) 45%); pointer-events: none;
+  }
+}
 .panel .build { padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
 .panel h1 {
   font: 600 20px/1.25 var(--display); letter-spacing: -.02em; margin: 2px 0 8px;
@@ -970,9 +988,10 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   color: var(--ink-faint); margin: 0 0 10px;
 }
 .panel section { padding-top: 22px; }
-.panel .devices h2 { padding-top: 0; margin: 0; }
+.panel .devices h2 { padding-top: 20px; margin: 0; }
 .panel .grouptoggle { padding: 0; margin: 0; }
 .panel .grouptoggle .chev { font-size: 14px; }
+.panel .grouptoggle:hover { color: var(--ink); }
 
 /* Steps: numbered circles that fill as you go. */
 .panel .steps { gap: 2px; }
@@ -996,8 +1015,8 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 /* Parts list. */
 .panel .detected { margin: 0; padding: 0; list-style: none; }
 .panel .detected li {
-  display: flex; align-items: center; gap: 10px; min-height: 40px;
-  padding: 0 2px; border-bottom: 1px solid var(--rule); font-size: 14px;
+  display: flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 6px 2px; border-bottom: 1px solid var(--rule); font-size: 14px; line-height: 1.35;
 }
 .panel .detected li:last-child { border-bottom: 0; }
 .panel .detected .count {
@@ -1258,7 +1277,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
   display: flex; align-items: center; gap: 6px; min-height: 44px;
   padding: 6px 6px 6px 14px; border: 1px solid var(--rule); border-radius: 999px; background: #fff;
 }
-.panel .objlist li.lost { opacity: .55; }
+.panel .objlist li.lost .objname { color: var(--ink-faint); }
 .panel .objlist .objname {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 13.5px; font-weight: 500; color: var(--ink);
