@@ -24,3 +24,6 @@ playwright-report
 *.njsproj
 *.sln
 *.sw?
+
+# Downloaded CAD sources for scripts/models (regenerable)
+.model-cache

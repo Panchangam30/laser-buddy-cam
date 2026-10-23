@@ -39,6 +39,8 @@ for (const id of ids) {
   // "load", not "networkidle": the dev server holds an HMR websocket open, so
   // the network is never idle and every navigation would time out.
   await page.goto(`${BASE}/thumb?part=${encodeURIComponent(id)}`, { waitUntil: "load" });
+  // CAD models (public/models) load after the page; ThumbPage flags when they have.
+  await page.waitForSelector("body[data-models-ready]", { state: "attached", timeout: 30000 });
   // The studio environment map loads asynchronously; capturing before it lands
   // gives a flat, unlit part.
   await page.waitForTimeout(1600);

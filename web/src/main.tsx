@@ -19,4 +19,8 @@ const page = path.startsWith("/docs") ? <DocsPage />
   : path.startsWith("/remote") ? <RemotePage />
   : <App />;
 
-createRoot(document.getElementById("root")!).render(<StrictMode><PreferencesProvider>{page}<Settings /></PreferencesProvider></StrictMode>);
+// The thumbnail route is captured to PNG by scripts/thumbs.mjs; a settings
+// button there ends up in every part image.
+const settings = path.startsWith("/thumb") ? null : <Settings />;
+
+createRoot(document.getElementById("root")!).render(<StrictMode><PreferencesProvider>{page}{settings}</PreferencesProvider></StrictMode>);

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrthographicCamera } from "@react-three/drei";
 import { STARTER_KIT_PARTS } from "../components/StarterKit";
@@ -6,8 +6,9 @@ import {
   BatteryModel, BreadboardModel, ButtonModel, BuzzerModel, CapacitorModel,
   DisplayModel, IcModel, KnobModel, LedModel, MotorModel, RelayModel,
   RemoteModel, ResistorModel, SensorModel, ServoModel, TransistorModel,
-  UnoModel, WireModel,
+  UnoModel, WireModel, KIT_MODEL_URLS,
 } from "./kitModels";
+import { ModelReady } from "./GlbModel";
 
 /**
  * Renders one kit part on its own, for capturing a thumbnail.
@@ -37,7 +38,7 @@ const MODELS: Record<string, typeof LedModel> = {
  */
 const FRAME: Record<string, number> = {
   board: 80, breadboard: 62, remote: 95, display: 90, battery: 62,
-  motor: 40, servo: 40, relay: 48, ultrasonic: 52,
+  motor: 40, servo: 54, relay: 48, ultrasonic: 52,
   "seven-segment": 26, "lcd-1602": 90,
   ic: 26, knob: 18, button: 14, buzzer: 18, capacitor: 20, wire: 24,
   resistor: 16, led: 15, transistor: 14, sensor: 14,
@@ -88,7 +89,16 @@ export function ThumbPage() {
         <group rotation={[0, FACING[part.shape] ?? 0, 0]}>
           <Model id={part.id} color={part.color} />
         </group>
+        {/* scripts/thumbs.mjs waits for this, so no thumbnail is taken of a
+            placeholder while a CAD model is still downloading. */}
+        <Suspense fallback={null}>
+          {KIT_MODEL_URLS.map((url) => <ModelReady key={url} url={url} onReady={markReady} />)}
+        </Suspense>
       </Canvas>
     </div>
   );
+}
+
+function markReady() {
+  document.body.dataset.modelsReady = "true";
 }

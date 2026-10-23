@@ -5,6 +5,9 @@ import { ALUMINIUM, MOULDED, PCB_GREEN, bevel, dShape } from "./materials";
 import { resistorBands } from "./labels";
 import { Lead } from "./leads";
 import { PITCH } from "../lib/breadboard";
+import { GlbModel, preloadModel } from "./GlbModel";
+import unoPins from "./uno-r3.pins.json";
+import servoPorts from "./micro-servo.ports.json";
 
 /**
  * Detailed, free-standing models of the 29 starter-kit parts.
@@ -80,8 +83,32 @@ function Header({ count, spacing = 2.54, z = 0, rows = 1 }: {
 
 // ------------------------------------------------------------------- boards
 
-/** Arduino Uno R3: the connectors are what make it recognisable. */
-export function UnoModel({ selected }: ModelProps) {
+export const UNO_URL = "/models/uno-r3.glb";
+preloadModel(UNO_URL);
+
+/**
+ * Where the CAD Uno is drawn relative to its origin: its lowest point (the pin
+ * tails underneath) sits where the old primitive's underside did.
+ */
+const UNO_OFFSET: [number, number, number] = [0, -0.9, 0];
+
+/** A header socket opening on the Uno, by the name printed beside it. */
+export function unoPin(name: string): { x: number; y: number; z: number } | undefined {
+  const pin = (unoPins.pins as Record<string, { x: number; y: number; z: number }>)[name];
+  return pin && { x: pin.x + UNO_OFFSET[0], y: pin.y + UNO_OFFSET[1], z: pin.z + UNO_OFFSET[2] };
+}
+
+/**
+ * Arduino Uno R3, built from Arduino's released board file with KiCad's models
+ * of the parts on it (scripts/models/uno.mjs).
+ */
+export function UnoModel({ selected, ...props }: ModelProps) {
+  return <GlbModel url={UNO_URL} selected={selected} glow={["uno-pcb", "uno-pcb-edge"]}
+                   position={UNO_OFFSET} fallback={<UnoPrimitive selected={selected} {...props} />} />;
+}
+
+/** The hand-built Uno, shown while the CAD model loads. */
+function UnoPrimitive({ selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   return (
     <group>
@@ -159,7 +186,7 @@ export function BreadboardModel({ selected }: ModelProps) {
 // ------------------------------------------------------------------ outputs
 
 /** 5 mm LED. The flat on the flange is the cathode marker. */
-export function LedModel({ id, color, selected }: ModelProps) {
+function LedPrimitive({ id, color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const flange = useMemo(() => new THREE.ExtrudeGeometry(dShape(2.9, 2.4), bevel(0.8, 0.1)), []);
   const rgb = id === "rgb-led";
@@ -196,7 +223,7 @@ export function LedModel({ id, color, selected }: ModelProps) {
 }
 
 /** 16x2 character LCD, or a 7-segment digit. */
-export function DisplayModel({ id, color, selected }: ModelProps) {
+function DisplayPrimitive({ id, color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   if (id === "seven-segment") {
     // Seven bars and a point, laid out as the real digit.
@@ -249,7 +276,7 @@ export function DisplayModel({ id, color, selected }: ModelProps) {
 }
 
 /** Piezo buzzer: a sealed can with the sound hole in the top. */
-export function BuzzerModel({ color, selected }: ModelProps) {
+function BuzzerPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   return (
     <group>
@@ -280,7 +307,7 @@ export function BuzzerModel({ color, selected }: ModelProps) {
  * -- the obvious way to build it -- takes the legs with it, so they end up
  * pointing sideways into the air and the part never meets the board.
  */
-export function ResistorModel({ id, color, selected }: ModelProps) {
+function ResistorPrimitive({ id, color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const value = id === "resistor-220" ? "220 ohm" : id === "resistor-1k" ? "1k" : "10k";
   const bands = resistorBands(value) ?? ["#8d8d93", "#8d8d93", "#8d8d93"];
@@ -326,7 +353,7 @@ export function ResistorModel({ id, color, selected }: ModelProps) {
 }
 
 /** Radial electrolytic: can, crimp, vent score and the negative stripe. */
-export function CapacitorModel({ color, selected }: ModelProps) {
+function CapacitorPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const h = 11, r = 3.2;
   return (
@@ -361,7 +388,7 @@ export function CapacitorModel({ color, selected }: ModelProps) {
 // ------------------------------------------------------------------- inputs
 
 /** Tactile switch: housing, actuator, four bent legs. */
-export function ButtonModel({ color, selected }: ModelProps) {
+function ButtonPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   return (
     <group>
@@ -384,7 +411,7 @@ export function ButtonModel({ color, selected }: ModelProps) {
 }
 
 /** Potentiometer with a slotted shaft, so its setting reads at a glance. */
-export function KnobModel({ color, selected }: ModelProps) {
+function KnobPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   return (
     <group>
@@ -438,7 +465,7 @@ export function RemoteModel({ color, selected }: ModelProps) {
 
 // ------------------------------------------------------------------ sensors
 
-export function SensorModel({ id, color, selected }: ModelProps) {
+function SensorPrimitive({ id, color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
 
   if (id === "ultrasonic") {
@@ -523,8 +550,8 @@ export function SensorModel({ id, color, selected }: ModelProps) {
 
 // ------------------------------------------------------------------- motion
 
-/** Micro servo: case, horn, and the three-wire lead. */
-export function ServoModel({ color, selected }: ModelProps) {
+/** Micro servo, hand-built: shown while the CAD model loads. */
+function ServoPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const cable = useMemo(() => {
     const curve = new THREE.CatmullRomCurve3([
@@ -622,7 +649,7 @@ export function MotorModel({ id, color, selected }: ModelProps) {
 // ------------------------------------------------------------- ics, modules
 
 /** DIP chip with the right pin count for the part, notch and pin-1 dot. */
-export function IcModel({ id, color, selected }: ModelProps) {
+function IcPrimitive({ id, color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const perSide = 8;                     // both L293D and 74HC595 are 16-pin
   const w = perSide * 2.54;
@@ -651,7 +678,7 @@ export function IcModel({ id, color, selected }: ModelProps) {
 }
 
 /** Relay module: the sealed cube plus its carrier board. */
-export function RelayModel({ color, selected }: ModelProps) {
+function RelayPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   return (
     <group>
@@ -708,7 +735,7 @@ export function BatteryModel({ color, selected }: ModelProps) {
 }
 
 /** TO-92 transistor: the flat face fixes the pinout. */
-export function TransistorModel({ color, selected }: ModelProps) {
+function TransistorPrimitive({ color, selected }: ModelProps) {
   const glow = useSelectionGlow(selected);
   const body = useMemo(() => new THREE.ExtrudeGeometry(dShape(2.55, 1.85), bevel(4.6, 0.22)), []);
   return (
@@ -750,4 +777,126 @@ export function WireModel({ color, selected }: ModelProps) {
       ))}
     </group>
   );
+}
+
+// ------------------------------------------------------------ CAD models
+//
+// Parts KiCad has a model for use it (scripts/models/kit.mjs); the primitives
+// above remain as what shows while a model loads, and as the only model for
+// parts with no CAD source (servo, motors, battery, remote, wire, ultrasonic,
+// tilt switch, thermistor, joystick, soil sensor).
+
+const model = (name: string) => `/models/${name}.glb`;
+export const KIT_MODELS = [
+  "led-5mm", "led-5mm-rgb", "resistor-axial", "pushbutton-6mm", "trimpot", "photoresistor",
+  "lcd-1602", "seven-segment", "piezo-buzzer", "dip-16", "electrolytic", "to-92", "relay-module",
+];
+KIT_MODELS.forEach((name) => preloadModel(model(name)));
+/** Every CAD model the kit uses, the Uno included. */
+export const KIT_MODEL_URLS = [UNO_URL, "/models/micro-servo.glb", ...KIT_MODELS.map(model)];
+
+export function LedModel(props: ModelProps) {
+  const fallback = <LedPrimitive {...props} />;
+  // The RGB package and a NeoPixel are diffused white; the rest are tinted.
+  if (props.id === "rgb-led") {
+    return <GlbModel url={model("led-5mm-rgb")} selected={props.selected} fallback={fallback} />;
+  }
+  return <GlbModel url={model("led-5mm")} selected={props.selected} fallback={fallback}
+                   recolor={{ "led-lens": props.color }} />;
+}
+
+/** The CAD body, with the colour bands for this part's value drawn round it. */
+export function ResistorModel(props: ModelProps) {
+  const value = props.id === "resistor-220" ? "220 ohm" : props.id === "resistor-1k" ? "1k" : "10k";
+  const bands = resistorBands(value) ?? ["#8d8d93", "#8d8d93", "#8d8d93"];
+  return (
+    <GlbModel url={model("resistor-axial")} selected={props.selected}
+              recolor={{ "resistor-body": props.color }}
+              fallback={<ResistorPrimitive {...props} />}>
+      <group position={[0, 1.25, 0]} rotation={[0, 0, Math.PI / 2]}>
+        {bands.map((c, i) => {
+          const tolerance = i === bands.length - 1 && bands.length === 4;
+          return (
+            <mesh key={i} position={[0, tolerance ? 1.9 : (i - 1) * 0.95 - 0.6, 0]}>
+              <cylinderGeometry args={[1.3, 1.3, tolerance ? 0.5 : 0.62, 26]} />
+              <meshStandardMaterial color={c} roughness={tolerance ? 0.3 : 0.5}
+                                    metalness={tolerance ? 0.55 : 0.05} />
+            </mesh>
+          );
+        })}
+      </group>
+    </GlbModel>
+  );
+}
+
+export function CapacitorModel(props: ModelProps) {
+  return <GlbModel url={model("electrolytic")} selected={props.selected}
+                   recolor={{ "cap-sleeve": props.color }} fallback={<CapacitorPrimitive {...props} />} />;
+}
+
+export function ButtonModel(props: ModelProps) {
+  return <GlbModel url={model("pushbutton-6mm")} selected={props.selected} fallback={<ButtonPrimitive {...props} />} />;
+}
+
+export function KnobModel(props: ModelProps) {
+  if (props.id !== "potentiometer") return <KnobPrimitive {...props} />;
+  return <GlbModel url={model("trimpot")} selected={props.selected} fallback={<KnobPrimitive {...props} />} />;
+}
+
+export function SensorModel(props: ModelProps) {
+  if (props.id !== "photoresistor") return <SensorPrimitive {...props} />;
+  return <GlbModel url={model("photoresistor")} selected={props.selected} fallback={<SensorPrimitive {...props} />} />;
+}
+
+export function DisplayModel(props: ModelProps) {
+  const fallback = <DisplayPrimitive {...props} />;
+  if (props.id === "seven-segment") {
+    return <GlbModel url={model("seven-segment")} selected={props.selected} fallback={fallback} />;
+  }
+  return <GlbModel url={model("lcd-1602")} selected={props.selected} fallback={fallback}
+                   recolor={{ "lcd-glass": props.color }} />;
+}
+
+export function BuzzerModel(props: ModelProps) {
+  return <GlbModel url={model("piezo-buzzer")} selected={props.selected} fallback={<BuzzerPrimitive {...props} />} />;
+}
+
+export function RelayModel(props: ModelProps) {
+  return <GlbModel url={model("relay-module")} selected={props.selected} fallback={<RelayPrimitive {...props} />} />;
+}
+
+export function TransistorModel(props: ModelProps) {
+  return <GlbModel url={model("to-92")} selected={props.selected} fallback={<TransistorPrimitive {...props} />} />;
+}
+
+/** DIP-16 package, with the part number printed on top. */
+export function IcModel(props: ModelProps) {
+  return (
+    <GlbModel url={model("dip-16")} selected={props.selected}
+              recolor={{ "ic-body": props.color }} fallback={<IcPrimitive {...props} />}>
+      <Text position={[0.6, 3.7, 0.6]} rotation={[-Math.PI / 2, 0, 0]}
+            fontSize={2} color="#a9adb5" anchorX="center">
+        {props.id === "motor-driver" ? "L293D" : "74HC595"}
+      </Text>
+    </GlbModel>
+  );
+}
+
+export const SERVO_URL = "/models/micro-servo.glb";
+preloadModel(SERVO_URL);
+
+/**
+ * SG90 micro servo: FreeCAD's model of the case and horn, with its lead and
+ * 3-pin plug (scripts/models/servo.mjs).
+ */
+export function ServoModel(props: ModelProps) {
+  return <GlbModel url={SERVO_URL} selected={props.selected} glow={["servo-case"]}
+                   recolor={{ "servo-case": props.color }} fallback={<ServoPrimitive {...props} />} />;
+}
+
+/** A socket on the servo's plug: "signal", "5V" or "GND". */
+export function servoPort(name: string): { x: number; y: number; z: number } | undefined {
+  const ports = servoPorts.ports as Record<string, { x: number; y: number; z: number }>;
+  const key = Object.keys(ports).find((k) => k.toUpperCase() === name.toUpperCase());
+  return key ? { ...ports[key] } : undefined;
 }

@@ -1,7 +1,7 @@
 import { RoundedBox, Text } from "@react-three/drei";
 import { BOARD, SURFACE_Y, type Vec3 } from "../lib/breadboard";
 import type { ExternalDevice } from "../lib/types";
-import { ServoModel, UnoModel } from "./kitModels";
+import { ServoModel, UnoModel, servoPort, unoPin } from "./kitModels";
 
 interface DeviceLayout {
   position: Vec3;
@@ -15,18 +15,22 @@ function layoutFor(device: ExternalDevice, index: number): DeviceLayout {
   const side = device.placement?.side
     ?? (device.kind === "arduino-uno" ? "front" : "right");
 
+  // Both stand on the bench, not at the board's mid-height: the Uno on its pin
+  // tails (drawn 0.9 below its origin), the servo on the bottom of its case.
+  const y = device.kind === "arduino-uno" ? -BOARD.height / 2 + 0.9
+    : device.kind === "micro-servo" ? -BOARD.height / 2 : 0;
   if (side === "left") {
-    return { position: { x: -BOARD.width / 2 - 30, y: 0, z: -12 + order * 34 }, rotation: 0 };
+    return { position: { x: -BOARD.width / 2 - 30, y, z: -12 + order * 34 }, rotation: 0 };
   }
   if (side === "right") {
-    return { position: { x: BOARD.width / 2 + 29, y: 0, z: -14 + order * 34 }, rotation: 0 };
+    return { position: { x: BOARD.width / 2 + 29, y, z: -14 + order * 34 }, rotation: 0 };
   }
   // The Uno is wide, so offset it to leave a clear path from the board to its
   // headers and room for another front-mounted device beside it.
   return {
     position: {
       x: device.kind === "arduino-uno" ? -36 + order * 76 : 34 + order * 52,
-      y: 0,
+      y,
       z: -BOARD.depth / 2 - 43,
     },
     rotation: 0,
@@ -36,23 +40,14 @@ function layoutFor(device: ExternalDevice, index: number): DeviceLayout {
 function portLocal(device: ExternalDevice, portId: string, portIndex: number): Vec3 {
   const id = normalize(portId).replace(/[^A-Z0-9]/g, "");
   if (device.kind === "arduino-uno") {
-    const arduino: Record<string, Vec3> = {
-      D2: { x: 17.81, y: 5.4, z: 24 },
-      D5: { x: 10.19, y: 5.4, z: 24 },
-      D6: { x: 7.65, y: 5.4, z: 24 },
-      D8: { x: -2.57, y: 5.4, z: 24 },
-      D9: { x: -5.11, y: 5.4, z: 24 },
-      D10: { x: -7.65, y: 5.4, z: 24 },
-      D13: { x: -15.27, y: 5.4, z: 24 },
-      "5V": { x: -12.73, y: 5.4, z: -24 },
-      GND: { x: -10.19, y: 5.4, z: -24 },
-      A0: { x: 7.65, y: 5.4, z: -24 },
-    };
-    return arduino[id] ?? { x: -8.9 + portIndex * 2.54, y: 5.4, z: 24 };
+    // Real socket positions, from Arduino's board file. A bare digital pin
+    // number ("13") is how people often write it.
+    return unoPin(/^\d+$/.test(id) ? `D${id}` : id)
+      ?? unoPin(`D${Math.min(13, 2 + portIndex)}`)!;
   }
   if (device.kind === "micro-servo") {
-    const z = id === "SIGNAL" ? -1.8 : id === "5V" ? 0 : 1.8;
-    return { x: -33, y: 2.2, z };
+    // The sockets of the servo's 3-pin plug.
+    return servoPort(id) ?? servoPort("GND")!;
   }
   if (device.kind === "power-supply") {
     return { x: portIndex % 2 === 0 ? -6 : 6, y: 8, z: -10 };

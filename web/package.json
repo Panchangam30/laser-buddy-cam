@@ -12,7 +12,8 @@
     "test": "playwright test",
     "test:e2e": "playwright test",
     "dev:vision": "cd .. && .venv/bin/python -m vision.service",
-    "thumbs": "node scripts/thumbs.mjs"
+    "thumbs": "node scripts/thumbs.mjs",
+    "models": "node scripts/models/build.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
@@ -25,6 +26,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -34,6 +37,9 @@
     "concurrently": "^10.0.6",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
+    "fast-xml-parser": "^5.11.2",
+    "meshoptimizer": "^1.3.0",
+    "occt-import-js": "^0.0.23",
     "oxlint": "^1.81.0",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",
