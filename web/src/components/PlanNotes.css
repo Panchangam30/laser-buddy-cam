@@ -1,9 +1,13 @@
-.plan-notes-controls { position:absolute; z-index:9; top:62px; left:16px; display:flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--rule); border-radius:7px; background:#1c1f23ed; }
-.plan-notes-controls button { display:flex; align-items:center; gap:5px; border:0; border-radius:4px; padding:7px 8px; background:transparent; color:var(--ink-dim); font-size:11px; white-space:nowrap; }
+.plan-notes-controls { position:absolute; z-index:9; top:62px; left:16px; display:flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--rule); border-radius:var(--r-md); background:#1c1f23ed; }
+.plan-notes-controls button { display:flex; align-items:center; gap:5px; border:0; border-radius:var(--r-sm); padding:7px 9px; background:transparent; color:var(--ink-dim); font-size:11px; white-space:nowrap; }
 .plan-notes-controls button:hover:not(:disabled) { color:var(--ink); background:var(--raised); }
 .plan-notes-controls button[aria-pressed=true] { background:#383327; color:#f0cd7b; }
 .plan-notes-controls button:disabled { opacity:.35; cursor:default; }
 .plan-notes-controls button:nth-child(3) { border-left:1px solid var(--rule); border-radius:0; margin-left:2px; padding-left:9px; }
+/* The dark toolbar above reads its text from theme tokens, which are dark ink in
+   the light theme; match the other white floating controls there instead. */
+:root:not([data-theme=dark]) .plan-notes-controls { background:#fff; border-color:transparent; box-shadow:0 2px 10px #00000040; }
+:root:not([data-theme=dark]) .plan-notes-controls button[aria-pressed=true] { background:#fbf1d6; color:#7a5a12; }
 .plan-notes-help { position:absolute; z-index:9; top:102px; left:16px; margin:0; padding:7px 10px; max-width:280px; border:1px solid var(--rule); border-radius:5px; background:#1c1f23ed; color:#bcc2cb; font-size:10px; line-height:1.7; pointer-events:none; }
 .plan-annotations { position:absolute; z-index:8; inset:0; pointer-events:none; overflow:hidden; }
 .annotation-capture { position:absolute; z-index:2; inset:0; pointer-events:auto; cursor:crosshair; touch-action:none; }
