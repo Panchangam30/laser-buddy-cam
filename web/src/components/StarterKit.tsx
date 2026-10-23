@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
+import { usePreferences } from "../lib/preferences";
+import { purchaseUrl } from "../lib/purchase";
 import { SURFACE_Y, snapToHole } from "../lib/breadboard";
 import {
   BatteryModel, BreadboardModel, ButtonModel, BuzzerModel, CapacitorModel,
@@ -141,11 +143,13 @@ export function partHelp(part: KitPartDefinition) {
   return PART_HELP[part.id] ?? "An electronic component used to build and test Arduino circuits.";
 }
 
-export function ComponentsDrawer({ open, onToggle, count }: {
+export function ComponentsDrawer({ open, onToggle, count, onAdd }: {
   open: boolean;
   onToggle: () => void;
   count: number;
+  onAdd: (partId: string) => void;
 }) {
+  const { preferences } = usePreferences();
   const [query, setQuery] = useState("");
   const shown = STARTER_KIT_PARTS.filter((part) =>
     `${part.name} ${part.category}`.toLowerCase().includes(query.toLowerCase()));
@@ -161,26 +165,30 @@ export function ComponentsDrawer({ open, onToggle, count }: {
       {open && (
         <aside className="components-drawer" id="component-library">
           <div className="components-heading">
-            <div><strong>Starter kit</strong><span>Drag a part onto the board</span></div>
+            <div><strong>Starter kit</strong><span>Swipe to browse · Tap a part to add</span></div>
             <button onClick={onToggle} aria-label="Close component library">×</button>
           </div>
           <input className="component-search" value={query}
                  onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${STARTER_KIT_PARTS.length} components…`} />
-          <div className="component-grid">
+          <div className="component-grid" aria-label="Components">
             {shown.map((part) => (
-              <button key={part.id} className="component-card" draggable
+              <div className="component-tile" key={part.id}><button className="component-card" draggable={preferences.dragToPlace}
+                aria-label={`Add ${part.name}`}
                 onDragStart={(event) => {
                   event.dataTransfer.setData("application/x-starter-part", part.id);
                   event.dataTransfer.effectAllowed = "copy";
                 }}
-                onClick={() => window.dispatchEvent(new CustomEvent("add-starter-part", { detail: part.id }))}>
+                onClick={() => onAdd(part.id)}>
                 <PartPreview part={part} />
                 <span>{part.name}</span>
                 <small>{part.category}</small>
                 <span className="component-tooltip" role="tooltip"><strong>{part.name}</strong>{partHelp(part)}</span>
               </button>
+              <a className="purchase-link" href={purchaseUrl(part.name)} target="_blank" rel="noopener noreferrer" aria-label={`Shop for ${part.name}`}>Shop ↗</a>
+              </div>
             ))}
           </div>
+          {shown.length === 0 && <p className="component-empty">No matching parts. Try another name or category.</p>}
         </aside>
       )}
     </>

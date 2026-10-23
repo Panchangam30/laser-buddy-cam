@@ -1,6 +1,7 @@
 import * as THREE from "three";
-import { useMemo, useState, type RefObject } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
+import { usePreferences } from "../lib/preferences";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment, ContactShadows } from "@react-three/drei";
 import { Breadboard } from "./Breadboard";
 import { PartMesh } from "./Parts";
@@ -49,6 +50,7 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   onWireChange?: (id: string, end: "start" | "end", position: [number, number, number], target?: string) => void;
   annotationBridge?: RefObject<AnnotationSceneBridge | null>;
 }) {
+  const { preferences, settingsOpen } = usePreferences();
   const [focusedMove, setFocusedMove] = useState(false);
   const visibleAt = new Map<string, number>();
   plan.steps.forEach((s) => [...s.adds, ...(s.renders ?? [])]
@@ -71,7 +73,8 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
   return (
     <Canvas
       data-testid="assembly-scene"
-      frameloop={paused ? "never" : "always"}
+      title={preferences.swipeNavigation ? "Swipe to orbit · Pinch to zoom · Drag also works" : "Drag to orbit · Scroll to zoom"}
+      frameloop={paused || settingsOpen ? "never" : "always"}
       data-device-ids={visibleDeviceIds}
       data-part-ids={visiblePartIds}
       shadows
@@ -127,8 +130,30 @@ export function Scene({ plan, step, exploded, mode, world, guidance, labels,
       </group>
 
       <ContactShadows position={[0, -4.6, -18]} opacity={0.5} scale={260} blur={2.6} far={30} />
-      <OrbitControls makeDefault enablePan enabled={!focusedMove} target={[0, 0, -18]}
-        minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />
+      <Navigation enabled={!focusedMove && !paused && !settingsOpen} swipe={preferences.swipeNavigation} reduceMotion={preferences.reduceMotion} />
     </Canvas>
   );
+}
+
+function Navigation({ enabled, swipe, reduceMotion }: { enabled: boolean; swipe: boolean; reduceMotion: boolean }) {
+  const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
+  const canvas = useThree((state) => state.gl.domElement);
+  useEffect(() => {
+    if (!swipe || !enabled) return;
+    const orbit = (event: WheelEvent) => {
+      // Browser pinch gestures use ctrlKey; leave those to OrbitControls zoom.
+      if (event.ctrlKey || event.metaKey || !controls.current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+      const control = controls.current;
+      control.setAzimuthalAngle(control.getAzimuthalAngle() - event.deltaX * scale * 0.004);
+      control.setPolarAngle(Math.max(0.05, Math.min(Math.PI / 2.06, control.getPolarAngle() - event.deltaY * scale * 0.004)));
+      control.update();
+    };
+    canvas.addEventListener("wheel", orbit, { passive: false, capture: true });
+    return () => canvas.removeEventListener("wheel", orbit, true);
+  }, [canvas, enabled, swipe]);
+  return <OrbitControls ref={controls} makeDefault enablePan enabled={enabled} enableDamping={!reduceMotion}
+    target={[0, 0, -18]} minDistance={55} maxDistance={420} maxPolarAngle={Math.PI / 2.06} />;
 }

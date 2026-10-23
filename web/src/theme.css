@@ -1,0 +1,53 @@
+:root { color-scheme:light; --chassis:#f5f6f8; --panel:#fcfcfd; }
+:root[data-theme="dark"] {
+  color-scheme:dark;
+  --chassis:#14171c; --panel:#1b1f26; --raised:#252b34; --rule:#343c47;
+  --ink:#e7ebf1; --ink-dim:#b3bdcb; --ink-faint:#939faf;
+  --signal:#a5c4ff; --signal-ink:#14233d;
+  --rail-red-ink:#ff9f98; --good:#82d4a5; --warn:#ecc48a;
+  --hub-bg:var(--chassis); --hub-panel:var(--panel); --hub-line:var(--rule); --hub-copy:var(--ink-dim); --hub-yellow:var(--signal);
+  --shadow-sm:0 1px 3px #0003; --shadow-md:0 12px 36px #0004;
+}
+html[data-reduce-motion="true"] { scroll-behavior:auto; }
+html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, html[data-reduce-motion="true"] *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+:is(.panel,.component-grid,.tutorial-grid,.project-modal,.bench-dialog,.replay-panel) { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+.component-grid { touch-action:pan-y; min-height:0; }
+.component-tile { min-width:0; display:flex; flex-direction:column; align-items:center; padding-bottom:8px; border:1px solid var(--rule); border-radius:14px; background:var(--chassis); }
+.component-tile .component-card { width:100%; cursor:pointer; touch-action:pan-y; }
+.component-tile .component-card[draggable="true"] { cursor:grab; }
+.component-tile img { user-select:none; -webkit-user-drag:none; }
+.purchase-link { flex:none; font-size:11px; color:var(--signal); text-decoration:none; padding:5px 7px; border-radius:6px; white-space:nowrap; }
+.purchase-link:hover { text-decoration:underline; background:var(--raised); }
+.component-empty { color:var(--ink-dim); font-size:13px; padding:16px 4px; }
+.component-tooltip { background:var(--panel); }
+:root[data-theme="dark"] :is(.panel,.panel .tracker,.panel .laser,.panel .device,.panel .objlist li,.instruction,.viewswitch,.controls,.components-drawer,.project-modal,.calwiz,.replay-panel,.boardmap) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
+:root[data-theme="dark"] :is(.panel .step .n,.panel .askform input,.panel .modeswitch button.on,.panel .project-trigger,.panel .sidebar-toggle,.controls button,.ghostbtn,.trackbtn,.pill.ghost,.orb-mute,.seg button.on) { background:var(--raised); color:var(--ink); border-color:var(--rule); }
+:root[data-theme="dark"] :is(.panel .step.active .n,.viewswitch button.on,.controls .toggle.on,.panel .talkbtn,.panel .project-tool:hover) { background:var(--signal); color:var(--signal-ink); border-color:var(--signal); }
+:root[data-theme="dark"] .panel :is(.trackbtn,.ghostbtn,.pillbtn,.project-trigger,.mutebtn) { background:var(--raised); color:var(--ink); border:1px solid var(--rule); }
+:root[data-theme="dark"] :is(.panel .step.done .n,.livechip,.calwiz-ok) { background:#20382e; color:var(--good); }
+:root[data-theme="dark"] :is(.panel .availability.missing,.problem,.warn) { background:#39292b; color:var(--rail-red-ink); }
+:root[data-theme="dark"] :is(.panel .availability.available,.panel .availability.have) { background:#20382e; color:var(--good); }
+:root[data-theme="dark"] :is(.artifact pre,.project-goal textarea,.project-share-link input,.tutorial-card,.workbench-challenge > small) { background:var(--chassis); color:var(--ink-dim); }
+:root[data-theme="dark"] :is(.docs-topbar,.hub-topbar) { background:color-mix(in srgb,var(--panel) 94%,transparent); }
+:root[data-theme="dark"] :is(.docs-sidebar,.hub-path,.hub-guide,.hub-hero-card,.hub-search,.hub-problem-card,.hub-challenge-card,.hub-challenge-visual,.hub-category-tabs button,.hub-empty,.problem-detail header > div span,.challenge-panel,.challenge-panel fieldset button) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
+:root[data-theme="dark"] :is(.hub-topbar nav a,.hub-brand em,.hub-hero-copy > p,.hub-hero-card ol,.hub-section-heading.split > p,.hub-guide p,.hub-problem-card p,.hub-search input,.docs-topbar nav a,.docs-sidebar a) { color:var(--ink-dim); }
+:root[data-theme="dark"] :is(.hub-category-tabs button.on,.challenge-panel fieldset button.chosen) { background:var(--raised); color:var(--signal); border-color:var(--signal); }
+:root[data-theme="dark"] .settings-dialog { background:var(--panel); color:var(--ink); }
+@media (max-width:820px) { .component-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .component-tile .component-card { min-height:105px; } }
+:root[data-theme="dark"] .canvas-part-label { background:var(--panel); }
+:root[data-theme="dark"] .site-footer-meta a { color:var(--ink-dim) !important; }
+:root[data-theme="dark"] .site-footer.compact { background:var(--panel); }
+:root[data-theme="dark"] :is(.fix-steps li,.hint-stack article,.challenge-actions a,.challenge-actions button,.hub-guide-body,.hub-safety,.mini-safety,.hub-problem-card:hover,.hub-guide:hover) { background:var(--panel); border-color:var(--rule); }
+:root[data-theme="dark"] :is(.problem-detail section p,.problem-detail section li,.related a,.challenge-prompt,.challenge-panel legend,.hint-stack > div:first-child,.hint-stack article p,.hub-guide small,.hub-guide-body,.challenge-actions a,.challenge-actions button,.hub-challenge-card p,.hub-not-found p) { color:var(--ink-dim); }
+:root[data-theme="dark"] :is(.hub-safety,.hub-safety p,.mini-safety,.mini-safety strong,.answer-feedback.wrong) { background:#39292b; color:var(--rail-red-ink); }
+:root[data-theme="dark"] :is(.answer-feedback.right,.challenge-success,.challenge-panel fieldset button.right) { background:#20382e; color:var(--good); }
+:root[data-theme="dark"] .challenge-panel fieldset button.wrong { background:#39292b; color:var(--rail-red-ink); }
+:root[data-theme="dark"] :is(.hub-official,.fix-steps li > span,.challenge-actions a.primary) { background:var(--signal); color:var(--signal-ink) !important; }
+:root[data-theme="dark"] :is(.components-trigger,.docs-trigger,.hub-trigger,.replay-trigger,.simulation-trigger,.simulation-more) { background:var(--panel); color:var(--ink); border-color:var(--rule); }
+:root[data-theme="dark"] .part-actions { background:var(--panel); color:var(--ink); }
+@media (max-width:820px) {
+  .stage:has(.components-drawer) :is(.plan-notes-controls,.plan-notes-help,.part-actions,.voiceorb,.camera-pip) { display:none; }
+  .stage .components-drawer { z-index:12; bottom:140px; }
+  .stage .voiceorb { top:150px; right:18px; left:auto; transform:none; width:90px; --orb:48px; }
+  .camera-pip { bottom:150px; }
+}

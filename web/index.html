@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,13 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <title>Bench Assembly</title>
+    <title>Laser Buddy · Workbench</title>
+    <script>
+      try {
+        const settings = JSON.parse(localStorage.getItem("laser-buddy:preferences:v1") || "null");
+        const theme = settings?.theme;
+        document.documentElement.dataset.theme = theme === "light" ? "light" : theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : "dark";
+      } catch {}
+    </script>
     <!-- Added to an iPhone's Home Screen these make it launch fullscreen with
          its own icon, with no Safari chrome. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Laser Buddy" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#14171c" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
   </head>

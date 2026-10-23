@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePreferences } from "./lib/preferences";
+import { purchaseUrl } from "./lib/purchase";
 import { Scene, type ViewMode } from "./three/Scene";
 import { STATUS_COLOR } from "./three/World";
 import { CameraPanel } from "./ui/CameraPanel";
@@ -53,6 +55,10 @@ const TRACK_INTERVAL_MS = 450;
 const OBJECT_INTERVAL_MS = 180;
 
 export default function App() {
+  const { preferences, update: updatePreferences } = usePreferences();
+  const { narrate, labels } = preferences;
+  const setNarrate = (change: boolean | ((value: boolean) => boolean)) => updatePreferences({ narrate: typeof change === "function" ? change(narrate) : change });
+  const setLabels = (change: (value: boolean) => boolean) => updatePreferences({ labels: change(labels) });
   const challenge = challengeById(new URLSearchParams(window.location.search).get("challenge"));
   const challengeProject = useMemo(() => challenge ? {
     ...createProject(challenge.solutionPlan, `${challenge.title} challenge`),
@@ -65,7 +71,6 @@ export default function App() {
   const [exploded, setExploded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [narrate, setNarrate] = useState(true);
   const [keys, setKeys] = useState<{
     openai?: string; xai?: string; voiceProvider?: string; vision?: string;
   }>({});
@@ -90,7 +95,6 @@ export default function App() {
   const [sceneErr, setSceneErr] = useState("");
   const [visionErr, setVisionErr] = useState("");
   const [mode, setMode] = useState<ViewMode>("plan");
-  const [labels, setLabels] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [showDevices, setShowDevices] = useState(true);
   const [componentsOpen, setComponentsOpen] = useState(false);
@@ -99,7 +103,7 @@ export default function App() {
   const [simulationRate, setSimulationRate] = useState(1);
   const [simulationIncluded, setSimulationIncluded] = useState<string[]>([]);
   const [simulationDetailsOpen, setSimulationDetailsOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 820);
   const [kitParts, setKitParts] = useState<PlacedKitPart[]>([]);
   const [selectedKitPart, setSelectedKitPart] = useState<string | null>(null);
   const [challengeHint, setChallengeHint] = useState(() => {
@@ -928,6 +932,7 @@ export default function App() {
                 <li key={item.id} className={item.availability === "missing" ? "low" : ""}>
                   <span className="count">{item.count}&times;</span>
                   <span className="label">{item.label}</span>
+                  <a className="purchase-link" href={purchaseUrl(item.label)} target="_blank" rel="noopener noreferrer" aria-label={`Shop for ${item.label}`}>Shop ↗</a>
                   <span className={`availability ${item.availability}`}>{item.availability}</span>
                 </li>
               ))}
@@ -1079,7 +1084,7 @@ export default function App() {
 
         {mode === "plan" && (
           <>
-            <ComponentsDrawer open={componentsOpen} onToggle={() => setComponentsOpen((value) => !value)}
+            <ComponentsDrawer onAdd={addKitPart} open={componentsOpen} onToggle={() => setComponentsOpen((value) => !value)}
               count={kitParts.length} />
             <button className={`simulation-trigger ${simulationRunning ? "running" : ""}`}
               disabled={kitParts.length === 0}

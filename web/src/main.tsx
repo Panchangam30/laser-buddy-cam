@@ -7,6 +7,10 @@ import { RemotePage } from "./remote/RemotePage";
 import { AimPage } from "./remote/AimPage";
 import { HubPage } from "./hub/HubPage";
 
+import { PreferencesProvider } from "./lib/preferences";
+import { Settings } from "./components/Settings";
+import "./theme.css";
+
 const path = window.location.pathname;
 const page = path.startsWith("/docs") ? <DocsPage />
   : path.startsWith("/hub") ? <HubPage />
@@ -15,4 +19,4 @@ const page = path.startsWith("/docs") ? <DocsPage />
   : path.startsWith("/remote") ? <RemotePage />
   : <App />;
 
-createRoot(document.getElementById("root")!).render(<StrictMode>{page}</StrictMode>);
+createRoot(document.getElementById("root")!).render(<StrictMode><PreferencesProvider>{page}<Settings /></PreferencesProvider></StrictMode>);
