@@ -15,9 +15,9 @@ export function parseSketchFeedback(value: unknown, lineCount: number): SketchFe
   const text = (s: unknown, max = 8000): s is string => typeof s === "string" && s.length <= max;
   const record = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
   const line = (v: unknown) => v === null || (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= lineCount);
-  if (!text(item.summary) || !Array.isArray(item.explanation) || item.explanation.length > 80 || !item.explanation.every((row) => record(row) && line(row.line) && text(row.text))
-    || !Array.isArray(item.issues) || item.issues.length > 60 || !item.issues.every((row) => record(row) && line(row.line) && ["error", "warning", "info"].includes(String(row.severity)) && text(row.title, 250) && text(row.explanation) && text(row.suggestion))
-    || !Array.isArray(item.nextSteps) || item.nextSteps.length > 20 || !item.nextSteps.every((row) => text(row, 2000))
+  if (!text(item.summary) || !Array.isArray(item.explanation) || item.explanation.length > 16 || !item.explanation.every((row) => record(row) && line(row.line) && text(row.text))
+    || !Array.isArray(item.issues) || item.issues.length > 12 || !item.issues.every((row) => record(row) && line(row.line) && ["error", "warning", "info"].includes(String(row.severity)) && text(row.title, 250) && text(row.explanation) && text(row.suggestion))
+    || !Array.isArray(item.nextSteps) || item.nextSteps.length > 8 || !item.nextSteps.every((row) => text(row, 2000))
     || !(item.suggestedCode === null || text(item.suggestedCode, MAX_SKETCH_LENGTH))) return null;
   return item as unknown as SketchFeedback;
 }

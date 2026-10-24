@@ -141,7 +141,7 @@ test("requests LLM feedback with the current sketch and question and requires co
   await page.getByRole("button", { name: "Replace draft" }).click();
   await expect(page.getByLabel("Arduino sketch code")).toHaveValue(feedback.suggestedCode!);
   await expect(page.getByText(feedback.summary, { exact: true })).toHaveCount(0);
-  await expect(page.getByText("The code or question changed.", { exact: false })).toBeVisible();
+  await expect(page.getByText("The code, question, or project changed.", { exact: false })).toBeVisible();
 });
 
 test("shows recoverable missing-key errors and keeps the draft", async ({ page }) => {

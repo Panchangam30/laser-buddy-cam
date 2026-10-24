@@ -29,9 +29,8 @@ and notes without a camera, Arduino, or API key.
 - **Track objects on a desk.** The default camera mode follows objects outside
   the breadboard workflow. Identification and optional laser targeting need
   their own setup.
-- **Keep and share builds.** Projects and structured build timelines save in
-  the browser. Export/import JSON or share a compatible project link. Replay
-  keeps up to 300 board-change snapshots, without camera images or audio.
+- **Keep and share builds.** Projects save in the browser. Export/import JSON
+  or share a compatible project link.
 - **Add voice or a laser.** Configured voice assistance can explain steps.
   A calibrated Arduino pan/tilt head can point at a hole or tracked object.
   `/remote` and `/remote/aim` provide phone controls for a reachable local rig.
@@ -84,10 +83,9 @@ or head moves. Never aim the beam at eyes or reflective surfaces.
 
 ## Where your work goes
 
-Projects and replay snapshots use IndexedDB. Sketch drafts, sticky notes,
-arrows, and visibility settings use local storage per project. Clearing browser
-site data removes that work. Drafts and annotations are separate from project
-exports and share links.
+Projects, sketch drafts, sticky notes, arrows, and visibility settings are saved
+by the browser per project. Clearing browser site data removes that work.
+Drafts and annotations are separate from project exports and share links.
 
 Local checks, library explanations, and notes do not call an AI provider.
 Requesting LLM feedback sends the sketch, question, and project title to Groq.
@@ -122,6 +120,14 @@ From the root, the detector also has a camera-free synthetic self-test:
 ```
 
 Automated checks do not replace a test with a real camera, circuit, or laser rig.
+
+## License and third-party assets
+
+Project source code is available under the MIT License; see [LICENSE](LICENSE).
+Third-party 3D model licenses and source credits are listed in
+[`web/public/models/CREDITS.md`](web/public/models/CREDITS.md). Arduino is a
+trademark of Arduino SA; this project is not affiliated with or endorsed by
+Arduino.
 
 ## The team
 

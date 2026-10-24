@@ -8,10 +8,10 @@ export function SketchLlmFeedback({ code, projectTitle, onLocate, onUse }: {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ code: string; question: string; message: string } | null>(null);
-  const [answer, setAnswer] = useState<{ code: string; question: string; feedback: SketchFeedback; model: string } | null>(null);
+  const [answer, setAnswer] = useState<{ code: string; question: string; projectTitle: string; feedback: SketchFeedback; model: string } | null>(null);
   const pending = useRef<AbortController | null>(null);
-  const current = answer?.code === code && answer.question === question ? answer : null;
-  useEffect(() => { pending.current?.abort(); }, [code]);
+  const current = answer?.code === code && answer.question === question && answer.projectTitle === projectTitle ? answer : null;
+  useEffect(() => { pending.current?.abort(); }, [code, projectTitle]);
   useEffect(() => () => pending.current?.abort(), []);
 
   async function review() {
@@ -21,7 +21,7 @@ export function SketchLlmFeedback({ code, projectTitle, onLocate, onUse }: {
     setBusy(true); setError(null);
     try {
       const result = await requestSketchFeedback(code, question, projectTitle, controller.signal);
-      if (!controller.signal.aborted) setAnswer({ code, question, ...result });
+      if (!controller.signal.aborted) setAnswer({ code, question, projectTitle, ...result });
     } catch (cause) {
       if (!controller.signal.aborted) setError({ code, question, message: cause instanceof Error ? cause.message : "Could not review this sketch." });
     } finally {
@@ -34,7 +34,7 @@ export function SketchLlmFeedback({ code, projectTitle, onLocate, onUse }: {
     <div className="sketch-llm-actions"><button onClick={() => void review()} disabled={busy || !code.trim()}>{busy ? "Reviewing…" : "Review with LLM"}</button>{busy && <button onClick={() => { pending.current?.abort(); setBusy(false); }}>Cancel review</button>}</div>
     <p className="sketch-llm-note">Sends this sketch, your question, and the project title to Groq through the local API. Uses the configured Groq API key.</p>
     {error?.code === code && error.question === question && <p className="sketch-llm-error" role="alert">{error.message}</p>}
-    <div aria-live="polite">{busy && <p className="sketch-llm-note" role="status">Reading the sketch and preparing feedback…</p>}{!current && answer && <p className="sketch-llm-note">The code or question changed. Request a new review for this version.</p>}</div>
+    <div aria-live="polite">{busy && <p className="sketch-llm-note" role="status">Reading the sketch and preparing feedback…</p>}{!current && answer && <p className="sketch-llm-note">The code, question, or project changed. Request a new review for this version.</p>}</div>
     {current && <div className="sketch-llm-answer"><span className="sketch-llm-model">Reviewed via Groq · {current.model}</span><h4>Summary</h4><p>{current.feedback.summary}</p>
       {current.feedback.explanation.length > 0 && <><h4>How it works</h4><div className="sketch-walkthrough">{current.feedback.explanation.map((entry, index) => entry.line === null ? <p key={index}>{entry.text}</p> : <button key={index} onClick={() => onLocate(entry.line!)}><span>L{entry.line}</span><p>{entry.text}</p></button>)}</div></>}
       {current.feedback.issues.length > 0 && <><h4>Feedback</h4>{current.feedback.issues.map((issue, index) => <article className={`sketch-issue ${issue.severity}`} key={index}><span>{issue.severity.toUpperCase()}{issue.line && <button onClick={() => onLocate(issue.line!)}>Line {issue.line}</button>}</span><strong>{issue.title}</strong><p>{issue.explanation}</p><p>{issue.suggestion}</p></article>)}</>}

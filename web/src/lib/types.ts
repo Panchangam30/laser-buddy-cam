@@ -1,7 +1,6 @@
 /** The schema the vision model fills in, and the renderer consumes. */
 
 import type { WorkspaceLocation } from "./workspace";
-import type { World } from "./world";
 
 export type PartKind =
   | "resistor" | "led" | "capacitor" | "ic" | "transistor"
@@ -135,15 +134,4 @@ export interface Project {
   };
   createdAt: string;
   updatedAt: string;
-  /** Structured board measurements only; never camera images or audio. */
-  replay?: BuildSnapshot[];
-}
-
-export interface BuildSnapshot {
-  id: string;
-  at: number;
-  step: number;
-  world: World;
-  plan: Plan;
-  summary: string;
 }

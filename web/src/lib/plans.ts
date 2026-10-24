@@ -2,10 +2,8 @@ import { netOf, parseHole } from "./breadboard";
 import { legacyPinLocation } from "./workspace";
 import type {
   DetectedPart, ExternalDevice, ExternalDeviceKind, ExternalDevicePort,
-  Part, PartKind, Plan, PlanSource, Project, Requirement, Step, BuildSnapshot,
+  Part, PartKind, Plan, PlanSource, Project, Requirement, Step,
 } from "./types";
-import type { Entity, World } from "./world";
-import { REPLAY_LIMIT } from "./replay";
 
 const PART_KINDS = new Set<PartKind>([
   "resistor", "led", "capacitor", "ic", "transistor",
@@ -378,52 +376,5 @@ export function normalizeProject(raw: unknown): Project {
     },
     createdAt,
     updatedAt: text(row.updatedAt, createdAt),
-    replay: normalizeReplay(row.replay),
   };
-}
-
-/** Reconstruct exported history from supported measurement fields only. */
-function normalizeReplay(raw: unknown): BuildSnapshot[] {
-  if (raw === undefined) return [];
-  if (!Array.isArray(raw) || raw.length > REPLAY_LIMIT) throw new Error("Invalid build replay.");
-  return raw.map((value) => {
-    const snapshot = value as BuildSnapshot;
-    const world = snapshot?.world;
-    if (!snapshot || typeof snapshot.id !== "string" || !Number.isFinite(snapshot.at)
-      || !world?.board?.found || !Array.isArray(world.entities) || !Array.isArray(world.issues)
-      || world.entities.length > 500) throw new Error("Invalid board snapshot.");
-    const entities: Entity[] = world.entities.map((e) => {
-      const strings = ["id", "label", "value", "footprint", "footprintBox", "colorHex", "colorName", "note", "describe"] as const;
-      const arrays = ["pins", "holes", "nets"] as const;
-      if (!e || strings.some((key) => typeof e[key] !== "string")
-        || arrays.some((key) => !Array.isArray(e[key]) || e[key].some((entry) => typeof entry !== "string"))
-        || !e.centreMm || !e.sizeMm || ![e.centreMm.x, e.centreMm.z, e.sizeMm.length, e.sizeMm.width, e.sizeMm.area, e.angleDeg].every(Number.isFinite)
-        || (e.kind !== null && !PART_KINDS.has(e.kind))) throw new Error("Invalid replay component.");
-      return {
-        id: e.id, label: e.label, value: e.value, footprint: e.footprint, footprintBox: e.footprintBox,
-        colorHex: /^#[0-9a-f]{6}$/i.test(e.colorHex) ? e.colorHex : "#888888", colorName: e.colorName,
-        note: e.note, describe: e.describe, pins: e.pins, holes: e.holes, nets: e.nets,
-        kind: e.kind, identified: Boolean(e.identified), unreadable: Boolean(e.unreadable), polarised: Boolean(e.polarised),
-        confidence: ["high", "medium", "low"].includes(e.confidence) ? e.confidence : "low",
-        shape: e.shape === "wire" ? "wire" : "body", straddlesChannel: Boolean(e.straddlesChannel),
-        atEdge: Boolean(e.atEdge), present: Boolean(e.present), seenFrames: 0, ageS: 0,
-        centreMm: { x: e.centreMm.x, z: e.centreMm.z },
-        sizeMm: { length: e.sizeMm.length, width: e.sizeMm.width, area: e.sizeMm.area }, angleDeg: e.angleDeg,
-        terminalEvidence: ["measured", "inferred", "unknown"].includes(e.terminalEvidence ?? "") ? e.terminalEvidence : "unknown",
-      };
-    });
-    const cleanWorld: World = {
-      at: snapshot.at, frame: Math.max(1, positiveInteger(world.frame)), board: { found: true }, entities,
-      nets: Object.fromEntries([...new Set(entities.flatMap((e) => e.nets))].map((net) => [net, entities.filter((e) => e.nets.includes(net)).map((e) => e.id)])),
-      issues: world.issues.map((issue) => {
-        if (!issue || !["error", "warn", "info"].includes(issue.severity) || typeof issue.message !== "string"
-          || !Array.isArray(issue.entities) || issue.entities.some((id) => typeof id !== "string")) throw new Error("Invalid replay issue.");
-        return { severity: issue.severity, message: issue.message, entities: issue.entities };
-      }),
-      errors: [], summary: text(world.summary), orientation: { flipped: Boolean(world.orientation?.flipped), source: "replay" },
-    };
-    const plan = normalizePlan(snapshot.plan);
-    return { id: snapshot.id, at: snapshot.at, summary: text(snapshot.summary),
-      step: Math.min(plan.steps.length, positiveInteger(snapshot.step)), world: cleanWorld, plan };
-  });
 }

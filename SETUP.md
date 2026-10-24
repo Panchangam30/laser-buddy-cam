@@ -193,10 +193,10 @@ on a trusted network instead of exposing it to the internet.
 a separate copy for whoever opens them. Check what you are sharing because the
 link contains the project data.
 
-Exports include the plan, original code artifacts, progress, and structured
-replay snapshots. They do not include camera images, voice audio, edited sketch
-drafts, or plan notes. Use **Download .ino** for an edited sketch. Back up work
-before clearing browser site data.
+Exports include the plan, original code artifacts, and progress. They do not
+include camera images, voice audio, edited sketch drafts, or plan notes. Use
+**Download .ino** for an edited sketch. Back up work before clearing browser
+site data.
 
 ## If something does not work
 

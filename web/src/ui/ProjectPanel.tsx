@@ -94,7 +94,7 @@ export function ProjectPanel({ projects, activeId, busy, error, onClose, onOpen,
 
         <section className="project-sharing" aria-label="Share project">
           <h3>Take your project with you</h3>
-          <p>Includes the plan, code, required parts, progress, and build replay. No account needed.</p>
+          <p>Includes the plan, code, required parts, and progress. No account needed.</p>
           <div className="project-sharing-actions">
             <button onClick={() => {
               setShareError("");

@@ -44,8 +44,8 @@ arrows; **Undo** restores the last annotation action. Arrows can also be selecte
 and deleted with the toolbar, double-click, or Delete/Backspace. Escape cancels
 placing or drawing. Notes record the assembly step where they were created.
 
-Annotations save only to this browser's local storage per project. They are
-separate from project JSON/share links and are never sent for LLM feedback.
+Annotations are saved by the browser per project. They are separate from
+project JSON/share links and are never sent for LLM feedback.
 Part-attached arrows are hidden when their target is absent from the current
 step; free arrows remain fixed to the view. The app reports storage failures
 while keeping annotations editable for the session.
