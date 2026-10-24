@@ -1,6 +1,6 @@
 /*
-  LaserBuddy firmware - pan/tilt laser pointer
-  Arduino Uno: pan servo on D9, tilt servo on D10, laser switch on D7.
+  Controls the optional pan/tilt pointer used by Laser Buddy.
+  Pan servo: D9. Tilt servo: D10. Laser switch: D7.
 
   Serial commands (115200 baud, Newline):
     P <pan> <tilt>   smooth move, e.g.  P 90 60
@@ -9,10 +9,8 @@
     C                center both servos, laser off
     ?                report current angles
 
-  Note for host software (see vision/laser.py): P and J block for the whole
-  duration of the move, so the board cannot read serial while moving. Wait for
-  the "OK" line before sending the next command or the 64-byte input buffer
-  overflows and commands are silently lost.
+  P and J take time to finish. The computer should wait for the "OK" reply
+  before sending another command.
 */
 
 #include <Servo.h>
@@ -31,13 +29,11 @@ float panNow = 90, tiltNow = 90;
 unsigned long lastCmd = 0;
 bool laserOn = false;
 
-// A fixed buffer rather than a String. The Uno has 2 KB of SRAM and no heap
-// compaction, so building a String one character at a time, hundreds of
-// commands in a row, fragments the heap until an allocation fails and the
-// sketch stops answering. A char array cannot do that.
+// Keep each serial command in a small fixed-size buffer.
 const byte LINE_MAX = 48;
 char line[LINE_MAX];
 byte lineLen = 0;
+bool lineTooLong = false;
 
 void setLaser(bool on) {
   laserOn = on;
@@ -70,8 +66,7 @@ void moveTo(float p, float t, bool smooth) {
   delay(150);
 }
 
-// Parse "<cmd> <a> <b>" without allocating. strtod also accepts the decimals
-// the host sends, which atoi would silently truncate.
+// Read the two angle values after the command letter.
 bool parseTwo(char *cmd, float &p, float &t) {
   char *sp = strchr(cmd, ' ');
   if (!sp) return false;
@@ -95,8 +90,14 @@ void handle(char *cmd) {
       Serial.print("OK "); Serial.print(panNow, 1); Serial.print(' '); Serial.println(tiltNow, 1);
     } else Serial.println("ERR usage: P <pan> <tilt>");
   } else if (c == 'L') {
-    setLaser(strchr(cmd, '1') != NULL);
-    Serial.println(laserOn ? "OK laser on" : "OK laser off");
+    while (*cmd == ' ') cmd++;
+    if ((cmd[1] == ' ' || cmd[1] == '\t') &&
+        (cmd[2] == '0' || cmd[2] == '1') && cmd[3] == 0) {
+      setLaser(cmd[2] == '1');
+      Serial.println(laserOn ? "OK laser on" : "OK laser off");
+    } else {
+      Serial.println("ERR usage: L 0 or L 1");
+    }
   } else if (c == 'C') {
     setLaser(false);
     moveTo(90, 90, true);
@@ -123,10 +124,17 @@ void loop() {
     char ch = Serial.read();
     if (ch == '\n' || ch == '\r') {
       line[lineLen] = 0;
-      handle(line);
+      if (lineTooLong) {
+        Serial.println("ERR command too long");
+      } else {
+        handle(line);
+      }
       lineLen = 0;
+      lineTooLong = false;
     } else if (lineLen < LINE_MAX - 1) {
       line[lineLen++] = ch;
+    } else {
+      lineTooLong = true;
     }
   }
   if (laserOn && millis() - lastCmd > LASER_TIMEOUT_MS) setLaser(false);
