@@ -118,7 +118,7 @@ export function LaserPanel({ mode = "board", targets, why, tracking, boardFound,
               <span className="hint" style={{ margin: 0 }}>
                 {s.following ? `Following ${s.aimedAt || "an object"}`
                   : s.laserOn ? `On${s.aimedAt ? ` — ${s.aimedAt}` : ""}`
-                  : "Point at anything from the desk list, or ask the TA."}
+                  : "Point at anything from the desk list, or ask Buddy."}
               </span>
               {s.laserOn && (
                 <button className="ghostbtn" onClick={() => run("off", laserOff)}>Laser off</button>

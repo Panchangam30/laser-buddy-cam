@@ -1092,7 +1092,7 @@ body { background: var(--chassis); color: var(--ink); font-size: 14px; line-heig
 .panel .tracker .trackbar:has(.stop) .ghostbtn { flex: 1 1 0; }
 
 /* ==========================================================================
-   Voice orb -- the TA, floating over the board.
+   Voice orb -- Buddy, the voice assistant, floating over the board.
    ========================================================================== */
 .voiceorb {
   --orb: 64px;

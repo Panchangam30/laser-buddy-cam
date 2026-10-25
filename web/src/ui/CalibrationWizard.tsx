@@ -216,7 +216,7 @@ export function CalibrationWizard({ frameSize, onClose }: {
                   onChange={(e) => act("prefs", () => setLaserPrefs({ invertPan: e.target.checked }))} />
                   Flip left/right</label>
               </div>
-              <p className="calwiz-hint">If ↓ moves the dot up, tick Flip up/down. The TA's
+              <p className="calwiz-hint">If ↓ moves the dot up, tick Flip up/down. Buddy's
                 "move it down" follows the same setting.</p>
             </div>
 

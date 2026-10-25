@@ -82,6 +82,54 @@ Reply with JSON only:
 confidence is "high", "medium" or "low".
 """
 
+#: Added when the photo carries the tracker's numbered boxes (set-of-marks).
+#: Vision models recognise far better than they localise: GPT-4o once put an
+#: "Arduino Uno" box in empty desk while the tracker had a tight box on the
+#: board itself under the name "white paper". Naming the tracker's boxes puts
+#: the right name on the box the laser can actually hit.
+MARKS_PROMPT = """\
+
+Some objects are already outlined with numbered boxes. Those boxes are exact,
+but their names may be wrong -- ignore any name, look at what is inside.
+- For an object that has a numbered box, give its number(s) in "marks" and
+  leave "box" out. If several numbered boxes sit on the same object, list all
+  of their numbers in that one entry.
+- Give a "box" only for an object that has no numbered box at all.
+- A numbered box around nothing real (a shadow, empty desk) is simply left out.
+Example: {"label": "Arduino Uno", "detail": "blue", "marks": [3, 5],
+          "confidence": "high"}
+"""
+
+#: Colours for the numbered boxes, BGR, picked to stand apart on a dark desk.
+_MARK_COLOURS = [(0, 200, 255), (255, 120, 0), (80, 220, 80), (220, 80, 255),
+                 (0, 90, 255), (255, 220, 0), (160, 160, 255), (0, 255, 200)]
+
+
+def _draw_marks(frame: np.ndarray, marks: dict[int, tuple]) -> np.ndarray:
+    """A copy of the frame with each mark's box outlined and numbered."""
+    img = frame.copy()
+    h, w = img.shape[:2]
+    thick = max(2, round(min(w, h) / 300))
+    scale = max(0.6, min(w, h) / 700)
+    placed: list[tuple[int, int, int, int]] = []
+    for n, (x, y, bw, bh) in sorted(marks.items()):
+        colour = _MARK_COLOURS[(n - 1) % len(_MARK_COLOURS)]
+        cv2.rectangle(img, (x, y), (x + bw, y + bh), colour, thick)
+        text = str(n)
+        (tw, th), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+        tag_w, tag_h = tw + 10, th + base + 8
+        tx, ty = x, max(0, y - tag_h)
+        # Duplicate tracks often share a corner; step a tag right until it is clear.
+        while any(tx < px + pw and px < tx + tag_w and ty < py + ph and py < ty + tag_h
+                  for px, py, pw, ph in placed):
+            tx += tag_w + 2
+        tx = min(tx, max(0, w - tag_w))
+        placed.append((tx, ty, tag_w, tag_h))
+        cv2.rectangle(img, (tx, ty), (tx + tag_w, ty + tag_h), colour, -1)
+        cv2.putText(img, text, (tx + 5, ty + th + 4), cv2.FONT_HERSHEY_SIMPLEX,
+                    scale, (0, 0, 0), thick, cv2.LINE_AA)
+    return img
+
 
 def _encode(img: np.ndarray, quality: int = 85) -> str:
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
@@ -90,20 +138,27 @@ def _encode(img: np.ndarray, quality: int = 85) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf).decode()
 
 
-def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0) -> tuple[list[dict], str, str | None]:
-    """Ask the vision model what is in the frame. Returns (objects, scene, error)."""
+def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0,
+           marks: dict[int, tuple] | None = None) -> tuple[list[dict], str, str | None]:
+    """Ask the vision model what is in the frame. Returns (objects, scene, error).
+
+    `marks` ({number: box}) are drawn on the photo for the model to name; an
+    object it puts on them comes back with "marks" and possibly no "box".
+    """
     if not api_key:
         return [], "", "OPENAI_API_KEY missing -- objects cannot be identified"
     h, w = frame.shape[:2]
+    image = _draw_marks(frame, marks) if marks else frame
     body = json.dumps({
         "model": MODEL,
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "system", "content": PROMPT},
+            {"role": "system", "content": PROMPT + (MARKS_PROMPT if marks else "")},
             {"role": "user", "content": [
-                {"type": "text", "text": f"The photo is {w}x{h} pixels."},
-                {"type": "image_url", "image_url": {"url": _encode(frame), "detail": "high"}},
+                {"type": "text", "text": f"The photo is {w}x{h} pixels."
+                 + (f" Numbered boxes: {', '.join(map(str, sorted(marks)))}." if marks else "")},
+                {"type": "image_url", "image_url": {"url": _encode(image), "detail": "high"}},
             ]},
         ],
     }).encode()
@@ -126,14 +181,22 @@ def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0) -> tuple[list
 
     out = []
     for item in data.get("objects") or []:
+        raw_marks = item.get("marks") or []
+        if not isinstance(raw_marks, list):
+            raw_marks = [raw_marks]
+        found = [int(m) for m in raw_marks
+                 if isinstance(m, (int, float, str)) and str(m).strip().isdigit()
+                 and int(m) in (marks or {})]
+        box = None
         try:
-            x0, y0, x1, y1 = (float(v) for v in item.get("box", []))
+            x0, y0, x1, y1 = (float(v) for v in item.get("box") or [])
+            x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1))
+            box = _clip((int(x0 / 1000 * w), int(y0 / 1000 * h),
+                         int((x1 - x0) / 1000 * w), int((y1 - y0) / 1000 * h)), w, h)
         except (TypeError, ValueError):
-            continue
-        x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1))
-        box = (int(x0 / 1000 * w), int(y0 / 1000 * h),
-               int((x1 - x0) / 1000 * w), int((y1 - y0) / 1000 * h))
-        box = _clip(box, w, h)
+            pass
+        if box is None and found:
+            box = marks[found[0]]
         if box is None:
             continue
         out.append({
@@ -141,6 +204,7 @@ def detect(frame: np.ndarray, api_key: str, timeout: float = 30.0) -> tuple[list
             "detail": str(item.get("detail", "") or "").strip(),
             "confidence": str(item.get("confidence", "medium")).lower(),
             "box": box,
+            "marks": found,
         })
     return out, str(data.get("scene", "") or "").strip(), None
 
@@ -340,8 +404,14 @@ class ObjectScene:
                 or (now - self._last_detect > CHANGE_REDETECT_S and self._changed(frame)))
             if due:
                 self._detecting = True
-                threading.Thread(target=self._detect, args=(frame.copy(),), daemon=True).start()
+                threading.Thread(target=self._detect, args=(frame.copy(), self._marks()),
+                                 daemon=True).start()
             return self._snapshot()
+
+    def _marks(self) -> dict[int, tuple[str, tuple]]:
+        """The tracked boxes in this frame, numbered for the language model."""
+        tracked = [o for o in self.objects if o.tracking]
+        return {n: (o.id, o.box) for n, o in enumerate(tracked, 1)}
 
     def _apply_yolo(self, dets, w, h, now) -> None:
         seen: set[str] = set()
@@ -410,9 +480,11 @@ class ObjectScene:
 
     # ------------------------------------------------------ language-model look
 
-    def _detect(self, frame) -> None:
+    def _detect(self, frame, marks: dict[int, tuple[str, tuple]] | None = None) -> None:
+        marks = marks or {}
         try:
-            dets, scene, err = detect(frame, self.api_key)
+            dets, scene, err = detect(frame, self.api_key,
+                                      marks={n: box for n, (_, box) in marks.items()})
         except Exception as e:                       # never kill the thread silently
             dets, scene, err = [], "", f"{type(e).__name__}: {e}"
         with self._lock:
@@ -421,12 +493,12 @@ class ObjectScene:
             self._detect_grey = cv2.cvtColor(cv2.resize(frame, (160, 90)), cv2.COLOR_BGR2GRAY)
             self.error = err or ""
             if not err:
-                self._merge_llm(dets)
+                self._merge_llm(dets, {n: oid for n, (oid, _) in marks.items()})
                 self.scene = scene
             self._detections += 1
             self._done.notify_all()
 
-    def _merge_llm(self, dets: list[dict]) -> None:
+    def _merge_llm(self, dets: list[dict], marks: dict[int, str] | None = None) -> None:
         """Put the language model's names and details onto tracked objects.
 
         The model's boxes can be the right size but shifted by most of their
@@ -436,16 +508,40 @@ class ObjectScene:
         is what the user says. So tracked objects are tried first -- on strong
         evidence, then by proximity -- and only a name with no tracked object
         anywhere near it becomes a free-floating, untracked guess.
+
+        With `marks` ({number: object id}) the photo showed the tracked boxes
+        numbered, and the model said which numbers each name belongs to. That
+        is the answer, not evidence: the box guessing below only runs when
+        there were no marks to name.
         """
         now = time.time()
         claimed: set[str] = set()
         matched: dict[int, SceneObject] = {}
         tracked = [o for o in self.objects if o.tracking]
+        by_id = {o.id: o for o in self.objects}
+
+        # 0. Named marks. Duplicate tracks of one object (YOLO calling the same
+        #    board "book" and "laptop") all take the name, so whichever survives
+        #    answers to it.
+        for i, d in enumerate(dets):
+            hits = [by_id[marks[m]] for m in d.get("marks") or []
+                    if marks and m in marks and marks[m] in by_id and marks[m] not in claimed]
+            if not hits:
+                continue
+            matched[i] = hits[0]
+            for o in hits:
+                claimed.add(o.id)
+                o.label, o.detail = d["label"], d["detail"]
+        if marks:
+            # Anything the model did not put on a mark it placed itself.
+            tracked = []
 
         # 1. Strong evidence, tracked objects only. An untracked guess from an
         #    earlier look must not compete here: it carries the same name, so
         #    it would win every time and the bad box would never be corrected.
         for i, d in enumerate(dets):
+            if i in matched:
+                continue
             best, best_score = None, 0.3
             for o in tracked:
                 if o.id in claimed:
@@ -507,7 +603,8 @@ class ObjectScene:
             start = self._detections
             if frame is not None and not self._detecting:
                 self._detecting = True
-                threading.Thread(target=self._detect, args=(frame.copy(),), daemon=True).start()
+                threading.Thread(target=self._detect, args=(frame.copy(), self._marks()),
+                                 daemon=True).start()
             if self._detecting:
                 self._done.wait_for(lambda: self._detections > start, timeout=timeout)
             return self._snapshot()

@@ -1,141 +1,238 @@
-/*
-  Controls the optional pan/tilt pointer used by Laser Buddy.
-  Pan servo: D9. Tilt servo: D10. Laser switch: D7.
-
-  Serial commands (115200 baud, Newline):
-    P <pan> <tilt>   smooth move, e.g.  P 90 60
-    J <pan> <tilt>   jump instantly
-    L 1 / L 0        laser on / off
-    C                center both servos, laser off
-    ?                report current angles
-
-  P and J take time to finish. The computer should wait for the "OK" reply
-  before sending another command.
-*/
-
 #include <Servo.h>
 
-const int PAN_PIN = 9, TILT_PIN = 10, LASER_PIN = 7;
+Servo panServo;
+Servo tiltServo;
 
-// Limits keep the servos from hitting the frame. Tilt uses the servo's full
-// travel so the beam can reach the near edge of the desk; if your bracket hits
-// something at one end, bring that end in a few degrees (and match vision/laser.py).
-const int PAN_MIN = 10,  PAN_MAX = 170;
-const int TILT_MIN = 0, TILT_MAX = 180;
-const unsigned long LASER_TIMEOUT_MS = 15000;   // laser turns itself off after 15 s idle
+int panPin = 9;
+int tiltPin = 10;
+int laserPin = 7;
 
-Servo panServo, tiltServo;
-float panNow = 90, tiltNow = 90;
-unsigned long lastCmd = 0;
-bool laserOn = false;
+// limits so it doesnt hit the frame
+// (if tilt hits something at the end make the number smaller, and change laser.py too)
+int panMin = 10;
+int panMax = 170;
+int tiltMin = 0;
+int tiltMax = 180;
 
-// Keep each serial command in a small fixed-size buffer.
-const byte LINE_MAX = 48;
-char line[LINE_MAX];
-byte lineLen = 0;
-bool lineTooLong = false;
+// laser shuts off after 15 seconds of no commands
+unsigned long laserTimeout = 15000;
 
-void setLaser(bool on) {
-  laserOn = on;
-  digitalWrite(LASER_PIN, on ? HIGH : LOW);
+float panAngle = 90;
+float tiltAngle = 90;
+unsigned long lastCommandTime = 0;
+bool laserIsOn = false;
+
+// using a char array not a String because Strings mess up the memory
+// on the uno after a while and it just stops working
+char input[48];
+int inputLength = 0;
+
+void laser(bool turnOn)
+{
+  laserIsOn = turnOn;
+  if (turnOn)
+  {
+    digitalWrite(laserPin, HIGH);
+  }
+  else
+  {
+    digitalWrite(laserPin, LOW);
+  }
 }
 
-void writeServos() {
-  panServo.writeMicroseconds(map((long)(panNow * 10), 0, 1800, 500, 2400));
-  tiltServo.writeMicroseconds(map((long)(tiltNow * 10), 0, 1800, 500, 2400));
+void updateServos()
+{
+  // angle * 10 so we dont lose the decimal
+  long panPulse = map((long)(panAngle * 10), 0, 1800, 500, 2400);
+  long tiltPulse = map((long)(tiltAngle * 10), 0, 1800, 500, 2400);
+  panServo.writeMicroseconds(panPulse);
+  tiltServo.writeMicroseconds(tiltPulse);
 }
 
-void moveTo(float p, float t, bool smooth) {
-  p = constrain(p, (float)PAN_MIN, (float)PAN_MAX);
-  t = constrain(t, (float)TILT_MIN, (float)TILT_MAX);
-  if (!smooth) {
-    panNow = p; tiltNow = t; writeServos();
+void moveServos(float newPan, float newTilt, bool smooth)
+{
+  // keep it inside the limits
+  if (newPan < panMin)
+    newPan = panMin;
+  if (newPan > panMax)
+    newPan = panMax;
+  if (newTilt < tiltMin)
+    newTilt = tiltMin;
+  if (newTilt > tiltMax)
+    newTilt = tiltMax;
+
+  if (smooth == false)
+  {
+    panAngle = newPan;
+    tiltAngle = newTilt;
+    updateServos();
     delay(350);
     return;
   }
-  float dp = p - panNow, dt = t - tiltNow;
-  int steps = max(1, (int)(max(fabs(dp), fabs(dt)) / 1.5));
-  float p0 = panNow, t0 = tiltNow;
-  for (int i = 1; i <= steps; i++) {
-    float k = (float)i / steps;
-    k = k * k * (3 - 2 * k);          // ease in/out
-    panNow = p0 + dp * k; tiltNow = t0 + dt * k;
-    writeServos();
+
+  float panChange = newPan - panAngle;
+  float tiltChange = newTilt - tiltAngle;
+  float startPan = panAngle;
+  float startTilt = tiltAngle;
+
+  // figure out how many steps (about 1.5 degrees each)
+  float biggest = fabs(panChange);
+  if (fabs(tiltChange) > biggest)
+  {
+    biggest = fabs(tiltChange);
+  }
+  int steps = biggest / 1.5;
+  if (steps < 1)
+  {
+    steps = 1;
+  }
+
+  for (int i = 1; i <= steps; i++)
+  {
+    float amount = (float)i / steps;
+    amount = amount * amount * (3 - 2 * amount); // makes it speed up and slow down
+    panAngle = startPan + panChange * amount;
+    tiltAngle = startTilt + tiltChange * amount;
+    updateServos();
     delay(12);
   }
   delay(150);
 }
 
-// Read the two angle values after the command letter.
-bool parseTwo(char *cmd, float &p, float &t) {
-  char *sp = strchr(cmd, ' ');
-  if (!sp) return false;
-  char *afterP, *afterT;
-  p = strtod(sp, &afterP);
-  if (afterP == sp) return false;          // no number where one was expected
-  t = strtod(afterP, &afterT);
-  return afterT != afterP;
+// gets the 2 numbers out of something like "P 90 60"
+// (strtod works with decimals, atoi doesnt)
+bool getNumbers(char *text, float &pan, float &tilt)
+{
+  char *space = strchr(text, ' ');
+  if (space == NULL)
+  {
+    return false;
+  }
+  char *end1;
+  char *end2;
+  pan = strtod(space, &end1);
+  if (end1 == space)
+  {
+    return false; // no number
+  }
+  tilt = strtod(end1, &end2);
+  if (end2 == end1)
+  {
+    return false;
+  }
+  return true;
 }
 
-void handle(char *cmd) {
-  while (*cmd == ' ') cmd++;
-  if (*cmd == 0) return;
-  char c = toupper(cmd[0]);
-  lastCmd = millis();
+void printPosition()
+{
+  Serial.print("OK ");
+  Serial.print(panAngle, 1);
+  Serial.print(' ');
+  Serial.println(tiltAngle, 1);
+}
 
-  if (c == 'P' || c == 'J') {
-    float p, t;
-    if (parseTwo(cmd, p, t)) {
-      moveTo(p, t, c == 'P');
-      Serial.print("OK "); Serial.print(panNow, 1); Serial.print(' '); Serial.println(tiltNow, 1);
-    } else Serial.println("ERR usage: P <pan> <tilt>");
-  } else if (c == 'L') {
-    while (*cmd == ' ') cmd++;
-    if ((cmd[1] == ' ' || cmd[1] == '\t') &&
-        (cmd[2] == '0' || cmd[2] == '1') && cmd[3] == 0) {
-      setLaser(cmd[2] == '1');
-      Serial.println(laserOn ? "OK laser on" : "OK laser off");
-    } else {
-      Serial.println("ERR usage: L 0 or L 1");
+void doCommand(char *text)
+{
+  // skip spaces at the start
+  while (*text == ' ')
+  {
+    text++;
+  }
+  if (*text == 0)
+  {
+    return; // empty line
+  }
+
+  char letter = toupper(text[0]);
+  lastCommandTime = millis();
+
+  if (letter == 'P' || letter == 'J')
+  {
+    float pan, tilt;
+    if (getNumbers(text, pan, tilt))
+    {
+      if (letter == 'P')
+      {
+        moveServos(pan, tilt, true);
+      }
+      else
+      {
+        moveServos(pan, tilt, false);
+      }
+      printPosition();
     }
-  } else if (c == 'C') {
-    setLaser(false);
-    moveTo(90, 90, true);
+    else
+    {
+      Serial.println("ERR usage: P <pan> <tilt>");
+    }
+  }
+  else if (letter == 'L')
+  {
+    if (strchr(text, '1') != NULL)
+    {
+      laser(true);
+    }
+    else
+    {
+      laser(false);
+    }
+    if (laserIsOn)
+    {
+      Serial.println("OK laser on");
+    }
+    else
+    {
+      Serial.println("OK laser off");
+    }
+  }
+  else if (letter == 'C')
+  {
+    laser(false);
+    moveServos(90, 90, true);
     Serial.println("OK centered");
-  } else if (c == '?') {
-    Serial.print("OK "); Serial.print(panNow, 1); Serial.print(' '); Serial.println(tiltNow, 1);
-  } else {
+  }
+  else if (letter == '?')
+  {
+    printPosition();
+  }
+  else
+  {
     Serial.println("ERR unknown command");
   }
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
-  pinMode(LASER_PIN, OUTPUT);
-  setLaser(false);
-  panServo.attach(PAN_PIN, 500, 2400);
-  tiltServo.attach(TILT_PIN, 500, 2400);
-  writeServos();
+  pinMode(laserPin, OUTPUT);
+  laser(false);
+  panServo.attach(panPin, 500, 2400);
+  tiltServo.attach(tiltPin, 500, 2400);
+  updateServos();
   Serial.println("LaserBuddy ready");
 }
 
-void loop() {
-  while (Serial.available()) {
-    char ch = Serial.read();
-    if (ch == '\n' || ch == '\r') {
-      line[lineLen] = 0;
-      if (lineTooLong) {
-        Serial.println("ERR command too long");
-      } else {
-        handle(line);
-      }
-      lineLen = 0;
-      lineTooLong = false;
-    } else if (lineLen < LINE_MAX - 1) {
-      line[lineLen++] = ch;
-    } else {
-      lineTooLong = true;
+void loop()
+{
+  while (Serial.available() > 0)
+  {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r')
+    {
+      input[inputLength] = 0;
+      doCommand(input);
+      inputLength = 0;
+    }
+    else if (inputLength < 47)
+    {
+      input[inputLength] = c;
+      inputLength++;
     }
   }
-  if (laserOn && millis() - lastCmd > LASER_TIMEOUT_MS) setLaser(false);
+
+  // turn off laser if nobody sent anything for a while
+  if (laserIsOn && millis() - lastCommandTime > laserTimeout)
+  {
+    laser(false);
+  }
 }

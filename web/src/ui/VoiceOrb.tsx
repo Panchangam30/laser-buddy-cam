@@ -15,15 +15,15 @@ export function VoiceOrb({ status, error, muted, onStart, onStop, onMute }: {
 }) {
   const live = status === "live";
   const busy = status === "connecting";
-  const caption = busy ? "Connecting…" : live ? (muted ? "Muted" : "Listening") : "Talk to the TA";
+  const caption = busy ? "Connecting…" : live ? (muted ? "Muted" : "Listening") : "Talk to Buddy";
 
   return (
     <div className={`voiceorb ${status} ${muted ? "muted" : ""}`}>
 
       <div className="orb-wrap">
         <button className="orb" onClick={live || busy ? onStop : onStart}
-          aria-label={live || busy ? "End conversation with the TA" : "Talk to the TA"}
-          title={live || busy ? "End conversation" : "Talk to the TA"}>
+          aria-label={live || busy ? "End conversation with Buddy" : "Talk to Buddy"}
+          title={live || busy ? "End conversation" : "Talk to Buddy"}>
           <span className="orb-base" />
           <span className="orb-cloud a" />
           <span className="orb-cloud b" />

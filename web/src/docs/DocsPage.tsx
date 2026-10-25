@@ -94,8 +94,8 @@ npm run dev`}</Code>
         </section>
 
         <section id="voice">
-          <span className="docs-eyebrow">VOICE</span><h2>Talk to the teaching assistant<a className="docs-heading-anchor" href="#voice" aria-label="Link to Talk to the teaching assistant">#</a></h2>
-          <p><strong>Talk to the TA</strong> starts a live session using the provider configured by <code>VOICE_PROVIDER</code>. It receives the current plan and step and can change steps, inspect a new frame, check progress, describe the board, locate a part, or point the laser at a requested hole.</p>
+          <span className="docs-eyebrow">VOICE</span><h2>Talk to Buddy<a className="docs-heading-anchor" href="#voice" aria-label="Link to Talk to Buddy">#</a></h2>
+          <p><strong>Talk to Buddy</strong> starts a live session with Buddy, the voice assistant, using the provider configured by <code>VOICE_PROVIDER</code>. It receives the current plan and step and can change steps, inspect a new frame, check progress, describe the board, locate a part, or point the laser at a requested hole.</p>
           <p>Grok voice uses a WebSocket audio path and may hear its own output through speakers. Headphones provide the most reliable conversation. OpenAI Realtime can be selected with <code>VOICE_PROVIDER=openai</code>.</p>
         </section>
 

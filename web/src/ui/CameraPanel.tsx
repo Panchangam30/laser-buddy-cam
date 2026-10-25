@@ -20,7 +20,7 @@ export function CameraPanel({
   floating?: boolean;
   /** Kept mounted (frames are still grabbed from it) but not shown. */
   hidden?: boolean;
-  /** Tracked objects, boxed over the video so you see what the TA sees. */
+  /** Tracked objects, boxed over the video so you see what Buddy sees. */
   scene?: Scene;
   /** Hands the parent a function to grab a frame on demand (used by voice). */
   registerGrab?: (fn: () => string | null) => void;

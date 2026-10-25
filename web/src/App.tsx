@@ -963,7 +963,7 @@ export default function App() {
         {talk.length > 0 && (
           <div className="talk">
             {talk.map((u, i) => (
-              <p key={i} className={u.who}><span>{u.who === "you" ? "You" : "TA"}</span>{u.text}</p>
+              <p key={i} className={u.who}><span>{u.who === "you" ? "You" : "Buddy"}</span>{u.text}</p>
             ))}
           </div>
         )}
