@@ -37,7 +37,7 @@ and notes without a camera, Arduino, or API key.
 
 ## Quick start: just the website
 
-Install Node.js **22.12 or newer** and Git, then:
+Install Git and a supported Node.js version (**20.19.x** or **22.12 or newer**), then:
 
 ```sh
 git clone https://github.com/Panchangam30/laser-buddy-cam.git
@@ -123,11 +123,13 @@ Automated checks do not replace a test with a real camera, circuit, or laser rig
 
 ## License and third-party assets
 
-Project source code is available under the MIT License; see [LICENSE](LICENSE).
-Third-party 3D model licenses and source credits are listed in
-[`web/public/models/CREDITS.md`](web/public/models/CREDITS.md). Arduino is a
-trademark of Arduino SA; this project is not affiliated with or endorsed by
-Arduino.
+Original project source code is available under the MIT License; see
+[LICENSE](LICENSE). Third-party assets are not automatically covered by that
+license. In particular, the 3D models in `web/public/models/` have separate
+terms and source credits listed in
+[`web/public/models/CREDITS.md`](web/public/models/CREDITS.md). Check an asset's
+attribution and license before reusing it. Arduino is a trademark of Arduino
+SA; this project is not affiliated with or endorsed by Arduino.
 
 ## The team
 

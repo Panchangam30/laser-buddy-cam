@@ -6,7 +6,8 @@ setup below and add the other stuff when you need it.
 
 ## 1. Get the website running
 
-You need Git and Node.js 22.12 or newer. Check them in a terminal:
+You need Git and a supported Node.js version: **20.19.x** or **22.12 or
+newer**. (Node.js 21.x is not supported.) Check them in a terminal:
 
 ```sh
 git --version
