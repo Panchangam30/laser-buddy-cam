@@ -19,3 +19,31 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+Third-party components
+
+The MIT License above covers the original source code of this project. It
+does not cover the following, which keep their own licenses:
+
+* 3D models in web/public/models/ (*.glb) are adaptations of the Arduino UNO
+  Rev3 design files, the KiCad 3D models library and the FreeCAD parts
+  library. They are shared under CC BY-SA 4.0 or CC BY 3.0 as listed in
+  web/public/models/CREDITS.md, which also gives the attribution.
+
+* Part images in web/public/parts/ that are rendered from those models share
+  the license of the model they show (see the same CREDITS.md). Images of
+  parts drawn by this project's own code are covered by the MIT License.
+
+* The vision service (vision/) uses Ultralytics YOLO, licensed under the
+  GNU Affero General Public License v3.0 (AGPL-3.0), and downloads YOLO-World
+  weights that are under the same license. Anyone distributing the vision
+  service, or running it for others over a network, must meet the AGPL-3.0
+  terms for the combined work, including offering its complete source code.
+  The web app and firmware do not depend on Ultralytics.
+
+* Other dependencies installed by npm or pip are under their own licenses,
+  listed in each package.
+
+Arduino is a trademark of Arduino SA. This project is not affiliated with or
+endorsed by Arduino.

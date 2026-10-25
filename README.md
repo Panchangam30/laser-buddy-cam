@@ -128,8 +128,18 @@ Original project source code is available under the MIT License; see
 license. In particular, the 3D models in `web/public/models/` have separate
 terms and source credits listed in
 [`web/public/models/CREDITS.md`](web/public/models/CREDITS.md). Check an asset's
-attribution and license before reusing it. Arduino is a trademark of Arduino
-SA; this project is not affiliated with or endorsed by Arduino.
+attribution and license before reusing it. Part images in `web/public/parts/`
+rendered from those models carry the same terms.
+
+The vision service uses [Ultralytics YOLO](https://github.com/ultralytics/ultralytics),
+which is licensed under AGPL-3.0, as are the YOLO-World weights it downloads.
+Distributing the vision service, or running it for other people over a network,
+means meeting the AGPL-3.0 terms for the combined work, including sharing its
+source. The web app and the firmware do not depend on it. See [LICENSE](LICENSE)
+for the full list.
+
+Arduino is a trademark of Arduino SA; this project is not affiliated with or
+endorsed by Arduino.
 
 ## The team
 
