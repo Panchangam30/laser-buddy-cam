@@ -291,16 +291,6 @@ def describe(objs: list[dict], scene: str = "") -> str:
         return "No objects identified yet." + (f" {scene}" if scene else "")
     lines = [f"- {o['label']} ({o['id']}), {o['where']}"
              + (f", {o['detail']}" if o["detail"] else "")
-             + ("" if o["tracking"] else ", lost track of it -- may have moved")
-             for o in objs]
-    return (f"{scene}\n" if scene else "") + "\n".join(lines)
-
-
-def describe(objs: list[dict], scene: str = "") -> str:
-    if not objs:
-        return "No objects identified yet." + (f" {scene}" if scene else "")
-    lines = [f"- {o['label']} ({o['id']}), {o['where']}"
-             + (f", {o['detail']}" if o["detail"] else "")
              + ("" if o["tracking"] else
                 (", seen but not being tracked" if o.get("source") == "llm"
                  else ", lost track of it -- may have moved"))

@@ -21,7 +21,6 @@ const SHAFT = { x: 0, y: 16.59 };  // output spline axis
 const BOSS_TOP = 26.9;             // shoulder the horn seats on
 const HORN_HUB = { x: 26.97, y: 36.34, z: 25.67 };  // hub centre, underside, in the horn file
 const HALF_WIDTH = 5.9;
-const TAB_BOTTOM = 15.9;
 
 const MAT = {
   case: { name: "servo-case", color: linear("#2b63d9"), roughness: 0.32, metalness: 0 },
